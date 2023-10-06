@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from pathlib import Path
+from tqdm import tqdm
 
 import torch
 import torch.nn.functional as F
@@ -129,7 +129,6 @@ def train(model, dataloader, optimizer, total_steps, model_path):
 
     torch.save(model.state_dict(), model_path)
     print('saved model')
-
 
 
 if __name__ == '__main__':
