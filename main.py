@@ -16,7 +16,7 @@ from data_loader import make_data_loader
 timesteps = 1000
 
 # define betas
-betas = linear_beta_schedule(timesteps=timesteps)
+betas = cosine_beta_schedule(timesteps=timesteps)
 
 # define alphas
 alphas = 1. - betas
