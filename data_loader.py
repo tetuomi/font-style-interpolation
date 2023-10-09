@@ -18,9 +18,7 @@ class LoadDataset(data.Dataset):
         return len(self.data_list)
 
     def __getitem__(self, index):
-        img, label = self.data_list[index]
-
-        return img, label
+        return self.data_list[index]
 
 def read_img(path, image_size):
     transform = Compose([
@@ -36,7 +34,8 @@ def make_data_list(image_size):
     data_list = {'train': [], 'test': []}
     df = pd.read_csv('csv_files/google_fonts_drop_none.csv')
 
-    for data_type in ['train', 'test']:
+    style_i = 0
+    for data_type in ['train']:
         data_type_df = df[df['data_type'] == data_type].sample(100, random_state=0).reset_index(drop=True)
         for i in range(len(data_type_df)):
             p = os.path.join('../font2img/image', data_type_df.loc[i, 'font'])
@@ -44,7 +43,9 @@ def make_data_list(image_size):
 
             for j in range(26):
                 img = read_img(os.path.join(p, chr(ord('A') + j) + '.png'), image_size)
-                data_list[data_type] += [(img, j)]
+                data_list[data_type] += [(img, j, style_i)]
+
+            style_i += 1
 
     print('TRAIN SIZE: {}'.format(len(data_list['train'])))
     print('TEST SIZE: {}'.format(len(data_list['test'])))

@@ -1,6 +1,7 @@
 import os
 import json
 import requests
+from glob import glob
 from tqdm import tqdm
 
 import torch
@@ -46,14 +47,14 @@ def q_sample(x_start, t, noise=None):
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
 @torch.no_grad()
-def p_sample(model, x, classes, t, t_index, cond_scale=6., rescaled_phi=0.7):
+def p_sample(model, x, classes, style, t, t_index, class_scale=6., style_scale=6., rescaled_phi=0.7):
     betas_t = extract(betas, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = extract(sqrt_one_minus_alphas_cumprod, t, x.shape)
     sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
 
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
-    pred_noise = model.forward_with_cond_scale(x, t, classes, cond_scale=cond_scale, rescaled_phi=rescaled_phi)
+    pred_noise = model.forward_with_cond_scale(x, t, classes, style, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
     model_mean = sqrt_recip_alphas_t * (x - betas_t * pred_noise / sqrt_one_minus_alphas_cumprod_t)
 
     if t_index == 0:
@@ -66,29 +67,27 @@ def p_sample(model, x, classes, t, t_index, cond_scale=6., rescaled_phi=0.7):
 
 # Algorithm 2 (including returning all images)
 @torch.no_grad()
-def p_sample_loop(model, classes, shape, cond_scale=6., rescaled_phi=0.7):
+def p_sample_loop(model, classes, style, shape, class_scale=6., style_scale=6., rescaled_phi=0.7):
     device = next(model.parameters()).device
 
     b = shape[0]
     # start from pure noise (for each example in the batch)
     img = torch.randn(shape, device=device)
-    imgs = []
 
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
-        img = p_sample(model, img, classes, torch.full((b,), i, device=device, dtype=torch.long), i, cond_scale=cond_scale, rescaled_phi=rescaled_phi)
-        imgs.append(img.cpu().numpy())
-    return imgs
+        img = p_sample(model, img, classes, style, torch.full((b,), i, device=device, dtype=torch.long), i, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
+    return img
 
 @torch.no_grad()
-def sample(model, classes, image_size, batch_size=16, channels=3, cond_scale=6., rescaled_phi=0.7):
-    return p_sample_loop(model, classes, shape=(batch_size, channels, image_size, image_size), cond_scale=cond_scale, rescaled_phi=rescaled_phi)
+def sample(model, classes, style, image_size, batch_size=16, channels=3, class_scale=6., style_scale=6., rescaled_phi=0.7):
+    return p_sample_loop(model, classes, style, shape=(batch_size, channels, image_size, image_size), class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
 
-def p_losses(denoise_model, x_start, t, classes, noise=None, loss_type='l1'):
+def p_losses(denoise_model, x_start, t, classes, style, noise=None, loss_type='l1'):
     if noise is None:
         noise = torch.randn_like(x_start)
 
     x_noisy = q_sample(x_start=x_start, t=t, noise=noise)
-    predicted_noise = denoise_model(x_noisy, t, classes)
+    predicted_noise = denoise_model(x_noisy, t, classes, style)
 
     if loss_type == 'l1':
         loss = F.l1_loss(noise, predicted_noise)
@@ -101,19 +100,20 @@ def p_losses(denoise_model, x_start, t, classes, noise=None, loss_type='l1'):
 
     return loss
 
-def train(model, dataloader, optimizer, total_steps, model_path):
+def train(model, dataloader, optimizer, params):
     step = 0
-    while step < total_steps:
-        for batch, classes in dataloader:
+    while step < params['total_steps']:
+        for batch, classes, style in dataloader:
             optimizer.zero_grad()
 
-            batch = batch.to(device)
-            classes = classes.to(device)
+            batch = batch.to(params['device'])
+            classes = classes.to(params['device'])
+            style = style.to(params['device'])
 
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
-            t = torch.randint(0, timesteps, (batch.size(0),), device=device).long()
+            t = torch.randint(0, timesteps, (batch.size(0),), device=params['device']).long()
 
-            loss = p_losses(model, batch, t, classes, loss_type='huber')
+            loss = p_losses(model, batch, t, classes, style, loss_type='huber')
 
             if step % 100 == 0:
                 print('step', step, 'Loss:', loss.item())
@@ -121,52 +121,66 @@ def train(model, dataloader, optimizer, total_steps, model_path):
             loss.backward()
             optimizer.step()
 
-            if step != 0 and step % (total_steps//10) == 0:
-                torch.save(model.state_dict(), model_path)
+            if step != 0 and step % (params['total_steps']//10) == 0:
+                torch.save(model.state_dict(), params['model_filename'] + f"_step_{step}.pth")
                 print('saved model')
 
+                with torch.no_grad():
+                    model.eval()
+                    _classes = torch.tensor([i for i in range(26)] + [0 for _ in range(74)], device=params['device'])
+                    _style = torch.tensor([0 for _ in range(26)] + [i for i in range(74)], device=params['device'])
+                    images = sample(model, _classes, _style, params['image_size'], batch_size=_classes.size(0), channels=params['channels'],
+                                    class_scale=6., style_scale=6., rescaled_phi=0.7)
+                    images = (images + 1) * 0.5
+                    save_image(images.cpu(), f"result/log{params['experiment_id']}_step_{step}.png", nrow=10)
+                    model.train()
             step += 1
 
-    torch.save(model.state_dict(), model_path)
+    torch.save(model.state_dict(), params['model_filename'] + f"_step_{step}.pth")
     print('saved model')
 
 
 if __name__ == '__main__':
-    # trainning
-    lr = 8e-5
-    batch_size = 64
-    total_steps = 1e5
+    params = {
+        # trainning
+        'lr' : 1e-4,
+        'batch_size' : 64,
+        'total_steps' : 5e5,
 
-    # model
-    channels = 1
-    unet_dim = 32
-    image_size = 64
-    num_classes = 26
-    unet_dim_mults = (1, 2, 4, 8,)
-    model_path = './weight/classifier_free_guidance.pth'
+        # model
+        'channels' : 1,
+        'unet_dim' : 32,
+        'image_size' : 64,
+        'num_style' : 100,
+        'num_classes' : 26,
+        'unet_dim_mults' : (1, 2, 4, 8,),
 
-    # others
-    seed = 7777
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # others
+        'seed' : 7777,
+        'device' : 'cuda' if torch.cuda.is_available() else 'cpu',
+        'experiment_id' : str(len(glob('weight/*')) + 1),
+    }
+    params['model_filename'] = f"./weight/log{params['experiment_id']}_classifier_free_guidance"
 
-    freeze_seed(seed)
+    freeze_seed(params['seed'])
 
     # load model
     model = Unet(
-        dim=unet_dim,
-        channels=channels,
-        dim_mults=unet_dim_mults,
-        num_classes=num_classes,
+        dim=params['unet_dim'],
+        channels=params['channels'],
+        dim_mults=params['unet_dim_mults'],
+        num_classes=params['num_classes'],
+        num_style=params['num_style'],
         cond_drop_prob=0.5,
     )
-    model.to(device)
+    model.to(params['device'])
     model.train()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    dataloader = make_data_loader(batch_size, image_size)
+    optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
+    dataloader = make_data_loader(params['batch_size'], params['image_size'])
 
     # train the model
-    train(model, dataloader['train'], optimizer, total_steps, model_path)
+    train(model, dataloader['train'], optimizer, params)
 
     # send slack message
     requests.post(os.getenv('SLACK_URL'), data=json.dumps({'text': f':white_check_mark: All finished !!!'}))
