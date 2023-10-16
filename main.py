@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch.cuda.amp import autocast
 from torchvision.utils import save_image
+from torch.utils.tensorboard import SummaryWriter
 
 from utils import *
 from unet import Unet
@@ -102,6 +103,9 @@ def p_losses(denoise_model, x_start, t, classes, style, noise=None, loss_type='l
 
 def train(model, dataloader, optimizer, params):
     step = 0
+    torch.backends.cudnn.benchmark = True
+    writer = SummaryWriter(log_dir=f"logs/log{params['experiment_id']}")
+
     while step < params['total_steps']:
         for batch, classes, style in dataloader:
             optimizer.zero_grad()
@@ -117,6 +121,7 @@ def train(model, dataloader, optimizer, params):
 
             if step % 100 == 0:
                 print('step', step, 'Loss:', loss.item())
+                writer.add_scalar('diffusion', loss.item(), step)
 
             loss.backward()
             optimizer.step()
@@ -138,6 +143,7 @@ def train(model, dataloader, optimizer, params):
 
     torch.save(model.state_dict(), params['model_filename'] + "_step_final.pth")
     print('saved model')
+    writer.close()
 
 
 if __name__ == '__main__':
@@ -158,8 +164,10 @@ if __name__ == '__main__':
         # others
         'seed' : 7777,
         'device' : 'cuda' if torch.cuda.is_available() else 'cpu',
-        'experiment_id' : str(len(glob('weight/*')) + 1),
+        'experiment_id' : str(len(glob('logs/*')) + 1),
     }
+
+    os.makedirs(f"logs/log{params['experiment_id']}")
     params['model_filename'] = f"./weight/log{params['experiment_id']}_cfg"
 
     freeze_seed(params['seed'])
