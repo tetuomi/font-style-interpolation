@@ -136,7 +136,7 @@ def train(model, dataloader, optimizer, params):
                     model.train()
             step += 1
 
-    torch.save(model.state_dict(), params['model_filename'] + f"_step_{step}.pth")
+    torch.save(model.state_dict(), params['model_filename'] + "_step_final.pth")
     print('saved model')
 
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
         'device' : 'cuda' if torch.cuda.is_available() else 'cpu',
         'experiment_id' : str(len(glob('weight/*')) + 1),
     }
-    params['model_filename'] = f"./weight/log{params['experiment_id']}_classifier_free_guidance"
+    params['model_filename'] = f"./weight/log{params['experiment_id']}_cfg"
 
     freeze_seed(params['seed'])
 
