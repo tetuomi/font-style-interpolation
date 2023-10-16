@@ -382,3 +382,51 @@ class Unet(nn.Module):
 
         x = self.final_res_block(x, t, c, s)
         return self.final_conv(x)
+
+    def emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5):
+        batch, device = x.shape[0], x.device
+
+        classes_emb = self.classes_emb(classes)
+        style1_emb = self.style_emb(style1)
+        style2_emb = self.style_emb(style2)
+
+        c = self.classes_mlp(classes_emb)
+        s1 = self.style_mlp(style1_emb)
+        s2 = self.style_mlp(style2_emb)
+        s = math.cos(math.radians(90*alpha)) * s1 + math.cos(math.radians(90*alpha)) * s2
+
+        x = self.init_conv(x)
+        r = x.clone()
+
+        t = self.time_mlp(time)
+
+        h = []
+
+        for block1, block2, attn, downsample in self.downs:
+            x = block1(x, t, c, s)
+            h.append(x)
+
+            x = block2(x, t, c, s)
+            x = attn(x)
+            h.append(x)
+
+            x = downsample(x)
+
+        x = self.mid_block1(x, t, c, s)
+        x = self.mid_attn(x)
+        x = self.mid_block2(x, t, c, s)
+
+        for block1, block2, attn, upsample in self.ups:
+            x = torch.cat((x, h.pop()), dim=1)
+            x = block1(x, t, c, s)
+
+            x = torch.cat((x, h.pop()), dim=1)
+            x = block2(x, t, c, s)
+            x = attn(x)
+
+            x = upsample(x)
+
+        x = torch.cat((x, r), dim=1)
+
+        x = self.final_res_block(x, t, c, s)
+        return self.final_conv(x)
