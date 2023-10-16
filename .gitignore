@@ -6,3 +6,4 @@ data/**
 nohup.out
 **.pth
 result/**
+logs/**
