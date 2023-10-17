@@ -30,14 +30,16 @@ def read_img(path, image_size):
 
     return transform(img).float()
 
-def make_data_list(image_size):
+def make_data_list(image_size, num_style):
     data_list = {'train': [], 'test': []}
     df = pd.read_csv('csv_files/google_fonts_drop_none.csv')
 
     style_i = 0
     for data_type in ['train']:
-        data_type_df = df[df['data_type'] == data_type].sample(100, random_state=0).reset_index(drop=True)
+        data_type_df = df[df['data_type'] == data_type]
+
         for i in range(len(data_type_df)):
+            if num_style <= style_i: break
             p = os.path.join('../font2img/image', data_type_df.loc[i, 'font'])
             if os.path.isdir(p) == False: continue
 
@@ -52,8 +54,8 @@ def make_data_list(image_size):
 
     return data_list
 
-def make_data_loader(batch_size, image_size):
-    data_list = make_data_list(image_size)
+def make_data_loader(batch_size, image_size, num_style):
+    data_list = make_data_list(image_size, num_style)
 
     train_dataset = LoadDataset(data_list['train'])
     test_dataset = LoadDataset(data_list['test'])
