@@ -88,22 +88,42 @@ def p_losses(denoise_model, x_start, t, classes, style, noise=None, loss_type='l
         noise = torch.randn_like(x_start)
 
     x_noisy = q_sample(x_start=x_start, t=t, noise=noise)
+
+    # ordinal diffusion loss
     predicted_noise = denoise_model(x_noisy, t, classes, style)
 
+    # disentangle loss
+    class_and_style_noise = denoise_model(x_noisy, t, classes, style,
+                                            class_drop_prob=0., style_drop_prob=0.)
+    class_noise = denoise_model(x_noisy, t, classes, style,
+                                            class_drop_prob=0., style_drop_prob=1.)
+    style_noise = denoise_model(x_noisy, t, classes, style,
+                                            class_drop_prob=1., style_drop_prob=0.)
+
+    dis_weight_per_batch = (t >= 0.9 * timesteps)
+    b = x_noisy.size(0)
     if loss_type == 'l1':
-        loss = F.l1_loss(noise, predicted_noise)
+        diff_loss = F.l1_loss(noise, predicted_noise)
+        dis_loss_per_batch = dis_weight_per_batch * F.l1_loss(class_and_style_noise.view(b, -1),
+                                                    (class_noise + style_noise).view(b, -1),
+                                                    reduction='none').mean(dim=1)
     elif loss_type == 'l2':
-        loss = F.mse_loss(noise, predicted_noise)
+        diff_loss = F.mse_loss(noise, predicted_noise)
+        dis_loss_per_batch = dis_weight_per_batch * F.mse_loss(class_and_style_noise.view(b, -1),
+                                                    (class_noise + style_noise).view(b, -1),
+                                                    reduction='none').mean(dim=1)
     elif loss_type == 'huber':
-        loss = F.smooth_l1_loss(noise, predicted_noise)
+        diff_loss = F.smooth_l1_loss(noise, predicted_noise)
+        dis_loss_per_batch = dis_weight_per_batch * F.smooth_l1_loss(class_and_style_noise.view(b, -1),
+                                                    (class_noise + style_noise).view(b, -1),
+                                                    reduction='none').mean(dim=1)
     else:
         raise NotImplementedError()
 
-    return loss
+    return diff_loss, dis_loss_per_batch.sum()
 
 def train(model, dataloader, optimizer, params):
     step = 0
-    torch.backends.cudnn.benchmark = True
     writer = SummaryWriter(log_dir=f"logs/log{params['experiment_id']}")
 
     while step < params['total_steps']:
@@ -117,11 +137,14 @@ def train(model, dataloader, optimizer, params):
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
             t = torch.randint(0, timesteps, (batch.size(0),), device=params['device']).long()
 
-            loss = p_losses(model, batch, t, classes, style, loss_type='huber')
+            diff_loss, dis_loss = p_losses(model, batch, t, classes, style, loss_type='huber')
+            loss = params['W_DIFF']*diff_loss + params['W_DIS']*dis_loss
 
             if step % 100 == 0:
-                print('step', step, 'Loss:', loss.item())
-                writer.add_scalar('diffusion', loss.item(), step)
+                print('step', step, 'Loss:', loss.item(), 'diff:', diff_loss.item(), 'dis:', dis_loss.item())
+                writer.add_scalar('loss/total', loss.item(), step)
+                writer.add_scalar('loss/diffusion', diff_loss.item(), step)
+                writer.add_scalar('loss/disentangle', dis_loss.item(), step)
 
             loss.backward()
             optimizer.step()
@@ -135,7 +158,7 @@ def train(model, dataloader, optimizer, params):
                     _classes = torch.tensor([i for i in range(26)] + [0 for _ in range(74)], device=params['device'])
                     _style = torch.tensor([0 for _ in range(26)] + [i for i in range(74)], device=params['device'])
                     images = sample(model, _classes, _style, params['image_size'], batch_size=_classes.size(0), channels=params['channels'],
-                                    class_scale=6., style_scale=6., rescaled_phi=0.7)
+                                    class_scale=3., style_scale=3., rescaled_phi=0.7)
                     images = (images + 1) * 0.5
                     save_image(images.cpu(), f"result/log{params['experiment_id']}_step_{step}.png", nrow=10)
                     model.train()
@@ -151,15 +174,19 @@ if __name__ == '__main__':
         # trainning
         'lr' : 1e-4,
         'batch_size' : 64,
-        'total_steps' : 5e5,
+        'total_steps' : 2e5,
 
         # model
         'channels' : 1,
         'unet_dim' : 32,
         'image_size' : 64,
-        'num_style' : 100,
+        'num_style' : 1000,
         'num_classes' : 26,
         'unet_dim_mults' : (1, 2, 4, 8,),
+
+        # weights
+        'W_DIFF': 1.,
+        'W_DIS': 1.,
 
         # others
         'seed' : 7777,
@@ -168,7 +195,7 @@ if __name__ == '__main__':
     }
 
     os.makedirs(f"logs/log{params['experiment_id']}")
-    params['model_filename'] = f"./weight/log{params['experiment_id']}_cfg"
+    params['model_filename'] = f"./weight/log{params['experiment_id']}_C{params['num_classes']}_S{params['num_style']}_cfg"
 
     freeze_seed(params['seed'])
 
@@ -185,10 +212,10 @@ if __name__ == '__main__':
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
-    dataloader = make_data_loader(params['batch_size'], params['image_size'])
+    dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)
 
     # send slack message
-    requests.post(os.getenv('SLACK_URL'), data=json.dumps({'text': f':white_check_mark: All finished !!!'}))
+    requests.post(os.getenv('SLACK_URL'), data=json.dumps({'text': f":white_check_mark: log{params['experiment_id']} All finished !!!"}))
