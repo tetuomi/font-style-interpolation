@@ -304,8 +304,15 @@ class Unet(nn.Module):
 
         class_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 0., **kwargs)
         style_null_logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 1., **kwargs)
-        class_and_style_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
-        scaled_logits = logits + style_scale * (class_null_logits - class_and_style_null_logits) + class_scale * (style_null_logits - class_and_style_null_logits)
+
+        # disentangle cfg
+        if args[1][0].item() >= 900:
+            scaled_logits = logits + style_scale * class_null_logits + class_scale * style_null_logits
+        else:
+            scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
+
+        # simple cfg
+        # scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
 
         if rescaled_phi == 0.:
             return scaled_logits
@@ -317,29 +324,37 @@ class Unet(nn.Module):
 
     def forward(self, x, time, classes, style, class_drop_prob=None, style_drop_prob=None):
         batch, device = x.shape[0], x.device
+        class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
+        style_drop_prob = default(style_drop_prob, self.cond_drop_prob)
+
+        if class_drop_prob > 0:
+            class_keep_mask = prob_mask_like((batch,), 1 - class_drop_prob, device = device)
+
+        if style_drop_prob > 0:
+            style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
+
+        # class と style 両方noneを取り除く
+        if class_drop_prob > 0 and style_drop_prob > 0:
+            style_or_class_is_true = torch.logical_or(class_keep_mask, style_keep_mask)
+            class_keep_mask = torch.where(style_or_class_is_true, class_keep_mask, torch.ones_like(class_keep_mask))
+            style_keep_mask = torch.where(style_or_class_is_true, style_keep_mask, torch.ones_like(style_keep_mask))
 
         # class embeddings
-        class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
         classes_emb = self.classes_emb(classes)
         if class_drop_prob > 0:
-            keep_mask = prob_mask_like((batch,), 1 - class_drop_prob, device = device)
             null_classes_emb = repeat(self.null_classes_emb, 'd -> b d', b = batch)
-
             classes_emb = torch.where(
-                rearrange(keep_mask, 'b -> b 1'),
+                rearrange(class_keep_mask, 'b -> b 1'),
                 classes_emb,
                 null_classes_emb
             )
 
         # style embeddings
-        style_drop_prob = default(style_drop_prob, self.cond_drop_prob)
         style_emb = self.style_emb(style)
         if style_drop_prob > 0:
-            keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
             null_style_emb = repeat(self.null_style_emb, 'd -> b d', b = batch)
-
             style_emb = torch.where(
-                rearrange(keep_mask, 'b -> b 1'),
+                rearrange(style_keep_mask, 'b -> b 1'),
                 style_emb,
                 null_style_emb
             )
