@@ -181,6 +181,7 @@ if __name__ == '__main__':
         'image_size' : 64,
         'num_style' : 1000,
         'num_classes' : 26,
+        'cond_drop_prob': 0.1,
         'unet_dim_mults' : (1, 2, 4, 8,),
 
         # weights
@@ -205,7 +206,7 @@ if __name__ == '__main__':
         dim_mults=params['unet_dim_mults'],
         num_classes=params['num_classes'],
         num_style=params['num_style'],
-        cond_drop_prob=0.5,
+        cond_drop_prob=params['cond_drop_prob'],
     )
     model.to(params['device'])
     model.train()
