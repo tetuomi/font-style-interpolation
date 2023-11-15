@@ -104,22 +104,22 @@ def p_losses(denoise_model, x_start, t, classes, style, noise=None, loss_type='l
     if loss_type == 'l1':
         diff_loss = F.l1_loss(noise, predicted_noise)
         dis_loss_per_batch = dis_weight_per_batch * F.l1_loss(noise.view(b, -1),
-                                                            ((class_noise + style_noise) / math.sqrt(2)).view(b, -1),
+                                                            ((class_noise + style_noise) / 2.).view(b, -1),
                                                             reduction='none').mean(dim=1)
     elif loss_type == 'l2':
         diff_loss = F.mse_loss(noise, predicted_noise)
         dis_loss_per_batch = dis_weight_per_batch * F.mse_loss(noise.view.view(b, -1),
-                                                            ((class_noise + style_noise) / math.sqrt(2)).view(b, -1),
+                                                            ((class_noise + style_noise) / 2.).view(b, -1),
                                                             reduction='none').mean(dim=1)
     elif loss_type == 'huber':
         diff_loss = F.smooth_l1_loss(noise, predicted_noise)
         dis_loss_per_batch = dis_weight_per_batch * F.smooth_l1_loss(noise.view(b, -1),
-                                                                    ((class_noise + style_noise) / math.sqrt(2)).view(b, -1),
-                                                                    reduction='none').mean(dim=1)
+                                                            ((class_noise + style_noise) / 2.).view(b, -1),
+                                                            reduction='none').mean(dim=1)
     else:
         raise NotImplementedError()
 
-    return diff_loss, dis_loss_per_batch.sum()
+    return diff_loss, dis_loss_per_batch.sum()/dis_loss_per_batch.sum()
 
 def train(model, dataloader, optimizer, params):
     step = 0
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         # trainning
         'lr' : 1e-4,
         'batch_size' : 64,
-        'total_steps' : 5e5,
+        'total_steps' : 1e5,
 
         # model
         'channels' : 1,
