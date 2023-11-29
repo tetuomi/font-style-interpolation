@@ -1,7 +1,6 @@
 import math
 from functools import partial
 
-
 from einops.layers.torch import Rearrange
 from einops import rearrange, reduce, repeat
 
@@ -309,10 +308,15 @@ class Unet(nn.Module):
         if args[1][0].item() >= 900:
             scaled_logits = logits + style_scale * class_null_logits + class_scale * style_null_logits
         else:
-            scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
+            # scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
+            scaled_logits = logits + 3. * (logits - style_null_logits) + 3. * (logits - class_null_logits)
 
         # simple cfg
+        ## ε(Φ, Φ)なし
         # scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
+        ## ε(Φ, Φ)あり
+        # base_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
+        # scaled_logits = logits + style_scale * (class_null_logits - base_logits) + class_scale * (style_null_logits - base_logits)
 
         if rescaled_phi == 0.:
             return scaled_logits
