@@ -43,9 +43,13 @@ def make_data_list(image_size, num_style):
             p = os.path.join('../font2img/image', data_type_df.loc[i, 'font'])
             if os.path.isdir(p) == False: continue
 
-            for j in range(26):
-                img = read_img(os.path.join(p, chr(ord('A') + j) + '.png'), image_size)
-                data_list[data_type] += [(img, j, style_i)]
+            # A ~ Z
+            # for j in range(26):
+            #     img = read_img(os.path.join(p, chr(ord('A') + j) + '.png'), image_size)
+            #     data_list[data_type] += [(img, j, style_i)]
+            # A だけ
+            img = read_img(os.path.join(p, 'A.png'), image_size)
+            data_list[data_type] += [(img, style_i)]
 
             style_i += 1
 
@@ -61,8 +65,8 @@ def make_data_loader(batch_size, image_size, num_style):
     test_dataset = LoadDataset(data_list['test'])
 
     dataloader = {
-        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True),
-        'test': DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True),
+        'test': DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
     }
 
     return dataloader
