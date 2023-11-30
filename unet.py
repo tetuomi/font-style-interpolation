@@ -338,10 +338,10 @@ class Unet(nn.Module):
             style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
 
         # class と style 両方noneを取り除く
-        if class_drop_prob > 0 and style_drop_prob > 0:
-            style_or_class_is_true = torch.logical_or(class_keep_mask, style_keep_mask)
-            class_keep_mask = torch.where(style_or_class_is_true, class_keep_mask, torch.ones_like(class_keep_mask))
-            style_keep_mask = torch.where(style_or_class_is_true, style_keep_mask, torch.ones_like(style_keep_mask))
+        # if class_drop_prob > 0 and style_drop_prob > 0:
+        #     style_or_class_is_true = torch.logical_or(class_keep_mask, style_keep_mask)
+        #     class_keep_mask = torch.where(style_or_class_is_true, class_keep_mask, torch.ones_like(class_keep_mask))
+        #     style_keep_mask = torch.where(style_or_class_is_true, style_keep_mask, torch.ones_like(style_keep_mask))
 
         # class embeddings
         classes_emb = self.classes_emb(classes)
@@ -402,17 +402,51 @@ class Unet(nn.Module):
         x = self.final_res_block(x, t, c, s)
         return self.final_conv(x)
 
-    def emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5):
+    def forward_with_emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5, class_drop_prob=None, style_drop_prob=None):
         batch, device = x.shape[0], x.device
 
+        class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
+        style_drop_prob = default(style_drop_prob, self.cond_drop_prob)
+
+        if class_drop_prob > 0:
+            class_keep_mask = prob_mask_like((batch,), 1 - class_drop_prob, device = device)
+
+        if style_drop_prob > 0:
+            style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
+
+        # class embeddings
         classes_emb = self.classes_emb(classes)
+        if class_drop_prob > 0:
+            null_classes_emb = repeat(self.null_classes_emb, 'd -> b d', b = batch)
+            classes_emb = torch.where(
+                rearrange(class_keep_mask, 'b -> b 1'),
+                classes_emb,
+                null_classes_emb
+            )
+
+        # style embeddings
         style1_emb = self.style_emb(style1)
         style2_emb = self.style_emb(style2)
+        if style_drop_prob > 0:
+            null_style_emb = repeat(self.null_style_emb, 'd -> b d', b = batch)
+            style1_emb = torch.where(
+                rearrange(style_keep_mask, 'b -> b 1'),
+                style1_emb,
+                null_style_emb
+            )
+            style2_emb = torch.where(
+                rearrange(style_keep_mask, 'b -> b 1'),
+                style2_emb,
+                null_style_emb
+            )
+
 
         c = self.classes_mlp(classes_emb)
         s1 = self.style_mlp(style1_emb)
         s2 = self.style_mlp(style2_emb)
-        s = math.cos(math.radians(90*alpha)) * s1 + math.cos(math.radians(90*alpha)) * s2
+        s = math.cos(math.radians(90*alpha)) * s1 + math.sin(math.radians(90*alpha)) * s2
+        if style_drop_prob == 1.:
+            s = s1
 
         x = self.init_conv(x)
         r = x.clone()
