@@ -167,8 +167,8 @@ if __name__ == '__main__':
         'unet_dim' : 32,
         'image_size' : 64,
         'num_style' : 2074,
-        'device_ids' : args.device_ids,
         'cond_drop_prob': 0.1,
+        'device_ids' : args.device_ids,
         'unet_dim_mults' : (1, 2, 4, 8,),
 
         # weights
@@ -176,8 +176,10 @@ if __name__ == '__main__':
 
         # others
         'seed' : 7777,
-        'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
+        'style_encoder_zdim' : 256,
         'experiment_id' : str(len(glob('logs/*')) + 1),
+        'style_encoder_path' : './weight/style_encoder.pth',
+        'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
     }
 
     os.makedirs(f"logs/log{params['experiment_id']}")
@@ -198,7 +200,8 @@ if __name__ == '__main__':
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
-    dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'])
+    dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'],
+                                    params['style_encoder_path'], params['style_encoder_zdim'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)

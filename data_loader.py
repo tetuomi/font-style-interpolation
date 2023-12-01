@@ -3,12 +3,14 @@ import os
 import cv2
 import pandas as pd
 
+import torch
 import torch.utils.data as data
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose
 
 from utils import preprocessing
+from style_encoder import StyleEncoder
 
 class LoadDataset(data.Dataset):
     def __init__(self, data_list):
@@ -30,9 +32,13 @@ def read_img(path, image_size):
 
     return transform(img).float()
 
-def make_data_list(image_size, num_style):
+def make_data_list(image_size, num_style, encoder_path, encoder_zdim):
     data_list = {'train': [], 'test': []}
     df = pd.read_csv('csv_files/google_fonts_drop_none.csv')
+
+    model = StyleEncoder(encoder_zdim)
+    model.load_state_dict(torch.load(encoder_path))
+    model.eval()
 
     style_i = 0
     for data_type in ['train']:
@@ -43,13 +49,10 @@ def make_data_list(image_size, num_style):
             p = os.path.join('../font2img/image', data_type_df.loc[i, 'font'])
             if os.path.isdir(p) == False: continue
 
-            # A ~ Z
-            # for j in range(26):
-            #     img = read_img(os.path.join(p, chr(ord('A') + j) + '.png'), image_size)
-            #     data_list[data_type] += [(img, j, style_i)]
-            # A だけ
             img = read_img(os.path.join(p, 'A.png'), image_size)
-            data_list[data_type] += [(img, style_i)]
+            with torch.no_grad():
+                feature = model(((img+1)*0.5).unsqueeze(0)) ## 作業中止
+            data_list[data_type] += [(img, feature)]
 
             style_i += 1
 
@@ -58,8 +61,8 @@ def make_data_list(image_size, num_style):
 
     return data_list
 
-def make_data_loader(batch_size, image_size, num_style):
-    data_list = make_data_list(image_size, num_style)
+def make_data_loader(batch_size, image_size, num_style, encoder_path, encoder_zdim):
+    data_list = make_data_list(image_size, num_style, encoder_path, encoder_zdim)
 
     train_dataset = LoadDataset(data_list['train'])
     test_dataset = LoadDataset(data_list['test'])
