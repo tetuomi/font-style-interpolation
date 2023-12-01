@@ -65,8 +65,8 @@ def make_data_loader(batch_size, image_size, num_style):
     test_dataset = LoadDataset(data_list['test'])
 
     dataloader = {
-        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True),
-        'test': DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True)
+        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True),
+        'test': DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
     }
 
     return dataloader

@@ -50,14 +50,14 @@ def q_sample(x_start, t, noise=None):
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
 @torch.no_grad()
-def p_sample(model, x, style, t, t_index, class_scale=6., style_scale=6., rescaled_phi=0.7):
+def p_sample(model, x, style, t, t_index, style_scale=6., rescaled_phi=0.7):
     betas_t = extract(betas, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = extract(sqrt_one_minus_alphas_cumprod, t, x.shape)
     sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
 
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
-    pred_noise = model.forward_with_cond_scale(x, t, style, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
+    pred_noise = model.forward_with_cond_scale(x, t, style, style_scale=style_scale, rescaled_phi=rescaled_phi)
     model_mean = sqrt_recip_alphas_t * (x - betas_t * pred_noise / sqrt_one_minus_alphas_cumprod_t)
 
     if t_index == 0:
@@ -70,7 +70,7 @@ def p_sample(model, x, style, t, t_index, class_scale=6., style_scale=6., rescal
 
 # Algorithm 2 (including returning all images)
 @torch.no_grad()
-def p_sample_loop(model, style, shape, class_scale=6., style_scale=6., rescaled_phi=0.7):
+def p_sample_loop(model, style, shape, style_scale=6., rescaled_phi=0.7):
     device = next(model.parameters()).device
 
     b = shape[0]
@@ -78,12 +78,12 @@ def p_sample_loop(model, style, shape, class_scale=6., style_scale=6., rescaled_
     img = torch.randn(shape, device=device)
 
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
-        img = p_sample(model, img, style, torch.full((b,), i, device=device, dtype=torch.long), i, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
+        img = p_sample(model, img, style, torch.full((b,), i, device=device, dtype=torch.long), i, style_scale=style_scale, rescaled_phi=rescaled_phi)
     return img
 
 @torch.no_grad()
-def sample(model, style, image_size, batch_size=16, channels=3, class_scale=6., style_scale=6., rescaled_phi=0.7):
-    return p_sample_loop(model, style, shape=(batch_size, channels, image_size, image_size), class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
+def sample(model, style, image_size, batch_size=16, channels=3, style_scale=6., rescaled_phi=0.7):
+    return p_sample_loop(model, style, shape=(batch_size, channels, image_size, image_size), style_scale=style_scale, rescaled_phi=rescaled_phi)
 
 def p_losses(denoise_model, x_start, t, style, noise=None, loss_type='l1'):
     if noise is None:
@@ -133,20 +133,20 @@ def train(model, dataloader, optimizer, params):
             optimizer.step()
 
             if step != 0 and step % (params['total_steps']//10) == 0:
-                torch.save(model.state_dict(), params['model_filename'] + f"_step_{step}.pth")
+                torch.save(model.module.state_dict(), params['model_filename'] + f"_step_{step}.pth")
                 print('saved model')
 
                 with torch.no_grad():
                     model.eval()
                     _style = torch.tensor([0 for _ in range(26)] + [i for i in range(74)], device=params['device'])
-                    images = sample(model, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
+                    images = sample(model.module, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
                                     style_scale=1., rescaled_phi=0.)
                     images = (images + 1) * 0.5
                     save_image(images.cpu(), f"result/log{params['experiment_id']}_step_{step}.png", nrow=10)
                     model.train()
             step += 1
 
-    torch.save(model.state_dict(), params['model_filename'] + "_step_final.pth")
+    torch.save(model.module.state_dict(), params['model_filename'] + "_step_final.pth")
     print('saved model')
     writer.close()
 
@@ -159,8 +159,8 @@ if __name__ == '__main__':
     params = {
         # trainning
         'lr' : 1e-4,
-        'batch_size' : 64,
-        'total_steps' : 300,
+        'batch_size' : 256,
+        'total_steps' : 2e5,
 
         # model
         'channels' : 1,
@@ -176,7 +176,7 @@ if __name__ == '__main__':
 
         # others
         'seed' : 7777,
-        'device' : f'cuda:{args.device_ids[0]}' if torch.cuda.is_available() else 'cpu',
+        'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
         'experiment_id' : str(len(glob('logs/*')) + 1),
     }
 
