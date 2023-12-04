@@ -194,11 +194,13 @@ class Unet(nn.Module):
         dim_mults=(1, 2, 4, 8),
         channels=3,
         self_condition=False,
+        use_style_encoder=False,
         resnet_block_groups=4,
     ):
         super().__init__()
 
         self.cond_drop_prob = cond_drop_prob
+        self.use_style_encoder = use_style_encoder
 
         # determine dimensions
         self.channels = channels
@@ -224,10 +226,10 @@ class Unet(nn.Module):
         )
 
         # style embeddings
-        self.style_emb = nn.Embedding(num_style, dim)
-        self.null_style_emb = nn.Parameter(torch.randn(dim))
-
         style_dim = dim * 4
+
+        self.style_emb = nn.Embedding(num_style, dim)
+        self.null_style_emb = nn.Parameter(torch.randn(dim if self.use_style_encoder==False else style_dim))
 
         self.style_mlp = nn.Sequential(
             nn.Linear(dim, style_dim),
@@ -308,7 +310,8 @@ class Unet(nn.Module):
             style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
 
         # style embeddings
-        style_emb = self.style_emb(style)
+        # use_style_encoder == False のときstyleはlabel, Trueのときはstyle_encoderの出力(256次元)
+        style_emb = self.style_emb(style) if self.use_style_encoder==False else style
         if style_drop_prob > 0:
             null_style_emb = repeat(self.null_style_emb, 'd -> b d', b = batch)
             style_emb = torch.where(
@@ -317,7 +320,7 @@ class Unet(nn.Module):
                 null_style_emb
             )
 
-        s = self.style_mlp(style_emb)
+        s = self.style_mlp(style_emb) if self.use_style_encoder==False else style_emb
 
         x = self.init_conv(x)
         r = x.clone()

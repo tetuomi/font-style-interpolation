@@ -25,26 +25,26 @@ class StyleEncoder(nn.Module):
                     nn.Linear(256*7*7, hidden_units),
                     # nn.ReLU(inplace=True),
                     nn.Dropout(p=0.5),
-                    nn.Linear(hidden_units, int(zdim/2)),
+                    nn.Linear(hidden_units, int(zdim)),
                     # nn.ReLU(inplace=True)
                     )
         self.fc_f = nn.Sequential(
                     nn.Linear(256*7*7, hidden_units),
                     # nn.ReLU(inplace=True),
                     nn.Dropout(p=0.5),
-                    nn.Linear(hidden_units, int(zdim/2)),
+                    nn.Linear(hidden_units, int(zdim)),
                     # nn.ReLU(inplace=True)
                     )
         self.fc_label = nn.Sequential(
-            nn.Linear(26, int(zdim/2)),
+            nn.Linear(26, int(zdim)),
             nn.ReLU(inplace=True),
         )
         self.classifier_c = nn.Sequential(
-                            nn.Linear(int(zdim/2), 26),
+                            nn.Linear(int(zdim), 26),
 #                             nn.Softmax(dim=1)
         )
         self.upsample = nn.Sequential(
-            nn.Linear(zdim, 256*7*7),
+            nn.Linear(zdim*2, 256*7*7),
             nn.ReLU(inplace=True))
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(256, 128, 4, 1, 1, bias=False),

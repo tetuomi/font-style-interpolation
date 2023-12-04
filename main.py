@@ -138,7 +138,10 @@ def train(model, dataloader, optimizer, params):
 
                 with torch.no_grad():
                     model.eval()
-                    _style = torch.tensor([0 for _ in range(26)] + [i for i in range(74)], device=params['device'])
+                    if params['use_style_encoder'] == False:
+                        _style = torch.tensor([i for i in range(100)], device=params['device'])
+                    else:
+                        _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in range(100)]).to(params['device'])
                     images = sample(model.module, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
                                     style_scale=1., rescaled_phi=0.)
                     images = (images + 1) * 0.5
@@ -159,7 +162,7 @@ if __name__ == '__main__':
     params = {
         # trainning
         'lr' : 1e-4,
-        'batch_size' : 256,
+        'batch_size' : 16,
         'total_steps' : 2e5,
 
         # model
@@ -176,7 +179,8 @@ if __name__ == '__main__':
 
         # others
         'seed' : 7777,
-        'style_encoder_zdim' : 256,
+        'style_encoder_zdim' : 128,
+        'use_style_encoder' : True,
         'experiment_id' : str(len(glob('logs/*')) + 1),
         'style_encoder_path' : './weight/style_encoder.pth',
         'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
@@ -194,6 +198,7 @@ if __name__ == '__main__':
         dim_mults=params['unet_dim_mults'],
         num_style=params['num_style'],
         cond_drop_prob=params['cond_drop_prob'],
+        use_style_encoder=params['use_style_encoder'],
     )
     model = torch.nn.DataParallel(model, device_ids=params['device_ids'])
     model.to(params['device'])

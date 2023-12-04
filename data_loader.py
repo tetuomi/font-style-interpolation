@@ -51,7 +51,7 @@ def make_data_list(image_size, num_style, encoder_path, encoder_zdim):
 
             img = read_img(os.path.join(p, 'A.png'), image_size)
             with torch.no_grad():
-                feature = model(((img+1)*0.5).unsqueeze(0)) ## 作業中止
+                feature = model(((img+1)*0.5).unsqueeze(0)).squeeze(0)
             data_list[data_type] += [(img, feature)]
 
             style_i += 1
