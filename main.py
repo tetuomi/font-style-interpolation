@@ -186,6 +186,14 @@ if __name__ == '__main__':
         'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
     }
 
+    # save先のディレクトリがなかったら作る
+    if os.path.isdir('logs') == False:
+        os.makedirs('logs')
+    if os.path.isdir('result') == False:
+        os.makedirs('result')
+    if os.path.isdir('weight') == False:
+        os.makedirs('weight')
+
     os.makedirs(f"logs/log{params['experiment_id']}")
     params['model_filename'] = f"./weight/log{params['experiment_id']}_S{params['num_style']}_cfg"
 
