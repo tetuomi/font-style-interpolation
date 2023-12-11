@@ -358,15 +358,35 @@ class Unet(nn.Module):
         x = self.final_res_block(x, t, s)
         return self.final_conv(x)
 
-    def emb_interpolate(self, x, time, style1, style2, alpha=0.5):
+    def forward_with_emb_interpolate(self, x, time, style1, style2, alpha=0.5, style_drop_prob=None):
         batch, device = x.shape[0], x.device
+        style_drop_prob = default(style_drop_prob, self.cond_drop_prob)
 
-        style1_emb = self.style_emb(style1)
-        style2_emb = self.style_emb(style2)
+        if style_drop_prob > 0:
+            style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
 
-        s1 = self.style_mlp(style1_emb)
-        s2 = self.style_mlp(style2_emb)
-        s = math.cos(math.radians(90*alpha)) * s1 + math.cos(math.radians(90*alpha)) * s2
+        # style embeddings
+        # use_style_encoder == False のときstyleはlabel, Trueのときはstyle_encoderの出力(256次元)
+        style_emb1 = self.style_emb(style1) if self.use_style_encoder==False else style1
+        style_emb2 = self.style_emb(style2) if self.use_style_encoder==False else style2
+        if style_drop_prob > 0:
+            null_style_emb = repeat(self.null_style_emb, 'd -> b d', b = batch)
+            style_emb1 = torch.where(
+                rearrange(style_keep_mask, 'b -> b 1'),
+                style_emb1,
+                null_style_emb
+            )
+            style_emb2 = torch.where(
+                rearrange(style_keep_mask, 'b -> b 1'),
+                style_emb2,
+                null_style_emb
+            )
+
+        s1 = self.style_mlp(style_emb1) if self.use_style_encoder==False else style_emb1
+        s2 = self.style_mlp(style_emb2) if self.use_style_encoder==False else style_emb2
+
+        # s = math.cos(math.radians(90*alpha)) * s1 + math.cos(math.radians(90*alpha)) * s2
+        s = alpha * s1 + (1-alpha) * s2
 
         x = self.init_conv(x)
         r = x.clone()
