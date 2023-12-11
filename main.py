@@ -169,7 +169,7 @@ if __name__ == '__main__':
         'channels' : 1,
         'unet_dim' : 32,
         'image_size' : 64,
-        'num_style' : 2074,
+        'num_style' : 13938, # myfonts: 13938, google_fonts: 2074
         'cond_drop_prob': 0.1,
         'device_ids' : args.device_ids,
         'unet_dim_mults' : (1, 2, 4, 8,),
@@ -181,6 +181,7 @@ if __name__ == '__main__':
         'seed' : 7777,
         'style_encoder_zdim' : 128,
         'use_style_encoder' : True,
+        'dataset_name' : 'myfonts', # 'myfonts' or 'google_fonts'
         'experiment_id' : str(len(glob('logs/*')) + 1),
         'style_encoder_path' : './weight/style_encoder.pth',
         'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
@@ -214,7 +215,7 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
     dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'],
-                                    params['style_encoder_path'], params['style_encoder_zdim'])
+                                    params['style_encoder_path'], params['style_encoder_zdim'], params['dataset_name'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)

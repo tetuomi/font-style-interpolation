@@ -63,6 +63,11 @@ def preprocessing(img,img_size=64,margin=0,threshold_w=0,threshold_h=0):
 
     return img_resize / 255.0
 
+def preprocessing_myfonts(img,img_size=64,margin=0):
+    img = np.pad(img,[(margin,margin),(margin,margin)], 'constant', constant_values=255.)
+    img = cv2.resize(img, (img_size, img_size))
+    return img / 255.
+
 def exists(x):
     return x is not None
 
