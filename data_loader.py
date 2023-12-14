@@ -1,5 +1,6 @@
 import os
 from glob import glob
+from random import random
 
 import cv2
 import numpy as np
@@ -10,6 +11,7 @@ import torch.utils.data as data
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose
+from torchvision.transforms import InterpolationMode
 
 from utils import preprocessing, preprocessing_myfonts
 from style_encoder import StyleEncoder
@@ -20,14 +22,22 @@ transform = Compose([
 ])
 
 class LoadDataset(data.Dataset):
-    def __init__(self, data_list):
+    def __init__(self, data_list, da_rate):
         self.data_list = data_list
+        self.da_rate = da_rate
+        self.da_transform = Compose([
+                            transforms.RandomAffine(degrees=0., translate=(0.2, 0.2), fill=1., interpolation=InterpolationMode.BILINEAR),
+                            ])
 
     def __len__(self):
         return len(self.data_list)
 
     def __getitem__(self, index):
-        return self.data_list[index]
+        img = self.data_list[index][0]
+        if random() < self.da_rate:
+            img = self.da_transform(img)
+        feature = self.data_list[index][1]
+        return img, feature
 
 def read_img(path, image_size):
     img = cv2.imread(path, 0)
@@ -91,7 +101,7 @@ def make_data_list_myfonts(image_size, num_style, encoder_path, encoder_zdim):
 
     return data_list
 
-def make_data_loader(batch_size, image_size, num_style, encoder_path, encoder_zdim, dataset_name='google_fonts'):
+def make_data_loader(batch_size, image_size, num_style, encoder_path, encoder_zdim, dataset_name='google_fonts', da_rate=0.):
     print(f'DATASET NAME IS {dataset_name}')
     assert dataset_name in ['google_fonts', 'myfonts'], f'dataset_name must be google_fonts or myfonts. but {dataset_name} is given.'
     if dataset_name == 'google_fonts':
@@ -99,8 +109,8 @@ def make_data_loader(batch_size, image_size, num_style, encoder_path, encoder_zd
     elif dataset_name == 'myfonts':
         data_list = make_data_list_myfonts(image_size, num_style, encoder_path, encoder_zdim)
 
-    train_dataset = LoadDataset(data_list['train'])
-    test_dataset = LoadDataset(data_list['test'])
+    train_dataset = LoadDataset(data_list['train'], da_rate=da_rate)
+    test_dataset = LoadDataset(data_list['test'], da_rate=da_rate)
 
     dataloader = {
         'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True),

@@ -179,6 +179,7 @@ if __name__ == '__main__':
 
         # others
         'seed' : 7777,
+        'da_rate': 0.3,
         'style_encoder_zdim' : 128,
         'use_style_encoder' : True,
         'dataset_name' : 'myfonts', # 'myfonts' or 'google_fonts'
@@ -215,7 +216,7 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
     dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'],
-                                    params['style_encoder_path'], params['style_encoder_zdim'], params['dataset_name'])
+                                    params['style_encoder_path'], params['style_encoder_zdim'], params['dataset_name'], params['da_rate'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)
