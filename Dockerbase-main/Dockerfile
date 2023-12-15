@@ -1,5 +1,7 @@
 # ws06
-FROM nvidia/cuda:11.0.3-runtime-ubuntu20.04
+# FROM nvidia/cuda:11.0.3-runtime-ubuntu20.04
+# DA
+FROM nvidia/cuda:11.6.1-runtime-ubuntu20.04
 # other
 # FROM nvidia/cuda:11.2.2-runtime-ubuntu20.04
 
@@ -54,7 +56,10 @@ RUN pip install --upgrade pip
 # or
 RUN pip install hydra-core --upgrade
 RUN pip install pandas matplotlib opencv-python scikit-learn torchsummary jupyterlab tensorboard tqdm einops seaborn mlflow flake8 autopep8
-RUN pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+# ws06
+# RUN pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+# DA
+RUN pip install torch==1.13.0+cu116 torchvision==0.14.0+cu116 torchaudio==0.13.0 --extra-index-url https://download.pytorch.org/whl/cu116
 
 # RUN echo 'alias cdp="cd .."' >> ~/.bashrc
 # RUN echo 'alias cdpp="cd ../.."' >> ~/.bashrc
