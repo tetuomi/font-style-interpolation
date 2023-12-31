@@ -159,7 +159,7 @@ def train(model, dataloader_dict, optimizer, num_epochs, log_dir, device, model_
 if __name__=='__main__':
     freeze_seed(1234)
 
-    LR = 1e-4 # 1e-5 when model is fannet
+    LR = 1e-5
     EPOCHS = 2000
     NUM_CHAR = 26
     IMAGE_SIZE = 64
@@ -167,7 +167,13 @@ if __name__=='__main__':
     MODEL_NAME = 'fannet2' # 'fannet', 'fannet2'
     MODEL_PATH = f'./weight/style_encoder_{MODEL_NAME}.pth'
     DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    
+
+    # save先のディレクトリがなかったら作る
+    if os.path.isdir('logs') == False:
+        os.makedirs('logs')
+    if os.path.isdir('weight') == False:
+        os.makedirs('weight')
+
 
     num_log_dir = str(len(glob('logs/*')) + 1)
     log_dir = os.path.join('logs', 'log' + num_log_dir)
