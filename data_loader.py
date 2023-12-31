@@ -13,113 +13,124 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import Compose
 from torchvision.transforms import InterpolationMode
 
-from utils import preprocessing, preprocessing_myfonts
+from fannet import FANnet
 from style_encoder import StyleEncoder
+from utils import preprocessing, preprocessing_myfonts
 
-transform = Compose([
-            transforms.ToTensor(),
-            transforms.Lambda(lambda t: (t * 2) - 1)
-])
 
 class LoadDataset(data.Dataset):
-    def __init__(self, data_list, da_rate):
-        self.data_list = data_list
+    def __init__(self, model, path_list, da_rate=0.3, image_size=64, margin=5, dataset_name='myfonts'):
+        self.model = model
+        self.path_list = path_list
         self.da_rate = da_rate
+        self.image_size = image_size
+        self.margin = margin
+        self.dataset_name = dataset_name
+        self.transform = Compose([
+                            transforms.ToTensor(),
+                            transforms.Lambda(lambda t: (t * 2) - 1)
+                        ])
         self.da_transform = Compose([
                             # 垂直水平シフト
                             transforms.RandomAffine(degrees=0., translate=(0.2, 0.2), fill=1., interpolation=InterpolationMode.BILINEAR),
-
-                            # 垂直水平シフト＋拡大縮小
-                            # transforms.Lambda(lambda t: 1 - (t + 1) * 0.5), # -1 -> 1, 1 -> 0
-                            # transforms.RandomAffine(degrees=0., scale=(0.8, 1.2), translate=(0., 0.2), fill=0., interpolation=InterpolationMode.BILINEAR),
-                            # transforms.Lambda(lambda t: 2 * (1 - t) - 1), # 1 -> -1, 0 -> 1
-                        ])
+                            ])
 
     def __len__(self):
-        return len(self.data_list)
+        return len(self.path_list)
 
     def __getitem__(self, index):
-        img = self.data_list[index][0]
+        path, label = self.path_list[index]
+        if self.dataset_name == 'google_fonts':
+            img = self.read_img(os.path.join(path, f"{chr(ord('A') + label)}.png"))
+        elif self.dataset_name == 'myfonts':
+            img = np.load(path)['arr_0'][label]
+            img = self.transform(preprocessing_myfonts(img, img_size=self.image_size, margin=self.margin)).float()
+
+        with torch.no_grad():
+            feature = self.model.style_encode(((img+1)*0.5).unsqueeze(0)).squeeze(0)
+
         if random() < self.da_rate:
             img = self.da_transform(img)
-        feature = self.data_list[index][1]
-        return img, feature
+        label = torch.tensor(label)
 
-def read_img(path, image_size, margin=5):
-    img = cv2.imread(path, 0)
-    img = preprocessing(img, img_size=image_size, margin=margin)
+        return img, feature, label
 
-    return transform(img).float()
+    def read_img(self, path):
+        transform = Compose([
+                                transforms.ToTensor(),
+                                transforms.Lambda(lambda t: (t * 2) - 1)
+                            ])
+        img = cv2.imread(path, 0)
+        img = preprocessing(img, img_size=self.image_size, margin=self.margin)
 
-def make_data_list_google_font(image_size, num_style, encoder_path, encoder_zdim, margin=5):
-    data_list = {'train': [], 'test': []}
+        return transform(img).float()
+
+def make_data_list_google_font(num_class):
+    data_list = {'train': [], 'val': [], 'test': []}
     df = pd.read_csv('csv_files/google_fonts_drop_none.csv')
 
-    model = StyleEncoder(encoder_zdim)
-    model.load_state_dict(torch.load(encoder_path))
-    model.eval()
+    for data_type in ['train', 'val', 'test']:
+        if data_type == 'val':
+            data_type_df = df[df['data_type'] == 'valid']
+        else:
+            data_type_df = df[df['data_type'] == data_type]
 
-    style_i = 0
-    for data_type in ['train']:
-        data_type_df = df[df['data_type'] == data_type]
-
-        for i in range(len(data_type_df)):
-            if num_style <= style_i: break
-            p = os.path.join('../font2img/image', data_type_df.loc[i, 'font'])
+        for _, row in data_type_df.iterrows():
+            p = os.path.join('../font2img/image', row['font'])
             if os.path.isdir(p) == False: continue
 
-            img = read_img(os.path.join(p, 'A.png'), image_size, margin=margin)
-            with torch.no_grad():
-                feature = model(((img+1)*0.5).unsqueeze(0)).squeeze(0)
-            data_list[data_type] += [(img, feature)]
-
-            style_i += 1
+            for label in range(num_class):
+                data_list[data_type] += [(p, label)]
 
     print('TRAIN SIZE: {}'.format(len(data_list['train'])))
+    print('VAL SIZE: {}'.format(len(data_list['val'])))
     print('TEST SIZE: {}'.format(len(data_list['test'])))
 
     return data_list
 
-def make_data_list_myfonts(image_size, num_style, encoder_path, encoder_zdim, margin=5):
-    data_list = {'train': [], 'test': []}
+def make_data_list_myfonts(num_class):
+    data_list = {'train': [], 'val': [], 'test': []}
 
-    model = StyleEncoder(encoder_zdim)
-    model.load_state_dict(torch.load(encoder_path))
-    model.eval()
-
-    style_i = 0
-    for data_type in ['train']:
+    for data_type in ['train', 'val', 'test']:
         path_list = glob(f'../font2img/myfonts/{data_type}/*')
 
         for i in range(len(path_list)):
-            if num_style <= style_i: break
-
-            img = np.load(path_list[i])['arr_0'][0] # A のみ
-            img = transform(preprocessing_myfonts(img, img_size=image_size, margin=margin)).float()
-            with torch.no_grad():
-                feature = model(((img+1)*0.5).unsqueeze(0)).squeeze(0)
-            data_list[data_type] += [(img, feature)]
-
-            style_i += 1
+            for label in range(num_class):
+                data_list[data_type] += [(path_list[i], label)]
 
     print('TRAIN SIZE: {}'.format(len(data_list['train'])))
+    print('VAL SIZE: {}'.format(len(data_list['val'])))
     print('TEST SIZE: {}'.format(len(data_list['test'])))
 
     return data_list
 
-def make_data_loader(batch_size, image_size, num_style, encoder_path, encoder_zdim, dataset_name='google_fonts', da_rate=0., margin=5):
+def make_data_loader(batch_size, image_size, num_class, encoder_path, dataset_name='google_fonts', da_rate=0., margin=5):
     print(f'DATASET NAME IS {dataset_name}')
     assert dataset_name in ['google_fonts', 'myfonts'], f'dataset_name must be google_fonts or myfonts. but {dataset_name} is given.'
     if dataset_name == 'google_fonts':
-        data_list = make_data_list_google_font(image_size, num_style, encoder_path, encoder_zdim, margin=margin)
+        path_list = make_data_list_google_font(num_class)
     elif dataset_name == 'myfonts':
-        data_list = make_data_list_myfonts(image_size, num_style, encoder_path, encoder_zdim, margin=margin)
+        path_list = make_data_list_myfonts(num_class)
 
-    train_dataset = LoadDataset(data_list['train'], da_rate=da_rate)
-    test_dataset = LoadDataset(data_list['test'], da_rate=da_rate)
+    if encoder_path == './weight/style_encoder_fannet.pth':
+        model = FANnet(num_class)
+    elif encoder_path == './weight/style_encoder_fannet2.pth':
+        model = StyleEncoder(num_class)
+    else:
+        raise ValueError('encoder_path must be weight/style_encoder_fannet.pth or weight/style_encoder_fannet2.pth')
+
+    model.to('cuda')
+    model.load_state_dict(torch.load(encoder_path, map_location='cuda'))
+    model.to('cpu')
+    model.eval()
+
+    train_dataset = LoadDataset(model, path_list['train'], da_rate=da_rate, image_size=image_size, margin=margin, dataset_name=dataset_name)
+    val_dataset = LoadDataset(model, path_list['val'], da_rate=da_rate, image_size=image_size, margin=margin, dataset_name=dataset_name)
+    test_dataset = LoadDataset(model, path_list['test'], da_rate=da_rate, image_size=image_size, margin=margin, dataset_name=dataset_name)
 
     dataloader = {
         'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=16, pin_memory=True),
+        'val': DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True),
         'test': DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
     }
 

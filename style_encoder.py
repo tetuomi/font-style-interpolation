@@ -64,4 +64,4 @@ class StyleEncoder(nn.Module):
         feat = feat.view(feat.shape[0], -1)
         feat_x = self.fc_f(feat)
 
-        return feat_x
+        return F.normalize(feat_x)

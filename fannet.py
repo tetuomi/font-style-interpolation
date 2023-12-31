@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class FANnet(nn.Module):
     def __init__(self, num_char):
@@ -55,4 +55,4 @@ class FANnet(nn.Module):
         return y
 
     def style_encode(self, x):
-        return self.enc_img(x)
+        return F.normalize(self.enc_img(x))

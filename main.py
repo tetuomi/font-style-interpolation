@@ -50,14 +50,14 @@ def q_sample(x_start, t, noise=None):
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
 @torch.no_grad()
-def p_sample(model, x, style, t, t_index, style_scale=6., rescaled_phi=0.7):
+def p_sample(model, x, classes, style, t, t_index, class_scale=3., style_scale=3., rescaled_phi=0.):
     betas_t = extract(betas, t, x.shape)
     sqrt_one_minus_alphas_cumprod_t = extract(sqrt_one_minus_alphas_cumprod, t, x.shape)
     sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
 
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
-    pred_noise = model.forward_with_cond_scale(x, t, style, style_scale=style_scale, rescaled_phi=rescaled_phi)
+    pred_noise = model.forward_with_cond_scale(x, t, classes, style, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
     model_mean = sqrt_recip_alphas_t * (x - betas_t * pred_noise / sqrt_one_minus_alphas_cumprod_t)
 
     if t_index == 0:
@@ -70,7 +70,7 @@ def p_sample(model, x, style, t, t_index, style_scale=6., rescaled_phi=0.7):
 
 # Algorithm 2 (including returning all images)
 @torch.no_grad()
-def p_sample_loop(model, style, shape, style_scale=6., rescaled_phi=0.7):
+def p_sample_loop(model, classes, style, shape, class_scale=3., style_scale=3., rescaled_phi=0.):
     device = next(model.parameters()).device
 
     b = shape[0]
@@ -78,21 +78,22 @@ def p_sample_loop(model, style, shape, style_scale=6., rescaled_phi=0.7):
     img = torch.randn(shape, device=device)
 
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
-        img = p_sample(model, img, style, torch.full((b,), i, device=device, dtype=torch.long), i, style_scale=style_scale, rescaled_phi=rescaled_phi)
+        t = torch.full((b,), i, device=device, dtype=torch.long)
+        img = p_sample(model, img, classes, style, t, i, class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
     return img
 
 @torch.no_grad()
-def sample(model, style, image_size, batch_size=16, channels=3, style_scale=6., rescaled_phi=0.7):
-    return p_sample_loop(model, style, shape=(batch_size, channels, image_size, image_size), style_scale=style_scale, rescaled_phi=rescaled_phi)
+def sample(model, classes, style, image_size, batch_size=16, channels=3, class_scale=1., style_scale=3., rescaled_phi=0.):
+    return p_sample_loop(model, classes, style, shape=(batch_size, channels, image_size, image_size), class_scale=class_scale, style_scale=style_scale, rescaled_phi=rescaled_phi)
 
-def p_losses(denoise_model, x_start, t, style, noise=None, loss_type='l1'):
+def p_losses(denoise_model, x_start, t, char_label, style, noise=None, loss_type='l1'):
     if noise is None:
         noise = torch.randn_like(x_start)
 
     x_noisy = q_sample(x_start=x_start, t=t, noise=noise)
 
     # ordinal diffusion loss
-    predicted_noise = denoise_model(x_noisy, t, style)
+    predicted_noise = denoise_model(x_noisy, t, char_label, style)
 
     if loss_type == 'l1':
         criterion = torch.nn.L1Loss()
@@ -112,7 +113,7 @@ def train(model, dataloader, optimizer, params):
     writer = SummaryWriter(log_dir=f"logs/log{params['experiment_id']}")
 
     while step < params['total_steps']:
-        for batch, style in dataloader:
+        for batch, style, label in dataloader:
             optimizer.zero_grad()
 
             batch = batch.to(params['device'])
@@ -121,7 +122,7 @@ def train(model, dataloader, optimizer, params):
             # Algorithm 1 line 3: sample t uniformally for every example in the batch
             t = torch.randint(0, timesteps, (batch.size(0),), device=params['device']).long()
 
-            diff_loss = p_losses(model, batch, t, style, loss_type='huber')
+            diff_loss = p_losses(model, batch, t, label, style, loss_type='huber')
             loss = params['W_DIFF']*diff_loss
 
             if step % 100 == 0:
@@ -138,12 +139,11 @@ def train(model, dataloader, optimizer, params):
 
                 with torch.no_grad():
                     model.eval()
-                    if params['use_style_encoder'] == False:
-                        _style = torch.tensor([i for i in range(100)], device=params['device'])
-                    else:
-                        _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in range(100)]).to(params['device'])
-                    images = sample(model.module, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
-                                    style_scale=1., rescaled_phi=0.)
+                    _classes = torch.tensor([i for i in range(26)] + [0 for _ in range(74)], device=params['device'])
+                    _style_id = [0 for _ in range(26)] + [26*(i+1) for i in range(100-26)]
+                    _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in _style_id]).to(params['device'])
+                    images = sample(model.module, _classes, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
+                                    class_scale=1., style_scale=1., rescaled_phi=0.)
                     images = (images + 1) * 0.5
                     save_image(images.cpu(), f"result/log{params['experiment_id']}_step_{step}.png", nrow=10)
                     model.train()
@@ -153,7 +153,6 @@ def train(model, dataloader, optimizer, params):
     print('saved model')
     writer.close()
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0])
@@ -162,14 +161,14 @@ if __name__ == '__main__':
     params = {
         # trainning
         'lr' : 1e-4,
-        'batch_size' : 16,
-        'total_steps' : 2e5,
+        'batch_size' : 16, # 256
+        'total_steps' : 2e5, 
 
         # model
         'channels' : 1,
-        'unet_dim' : 32,
+        'unet_dim' : 128,
         'image_size' : 64,
-        'num_style' : 13938, # myfonts: 13938, google_fonts: 2074
+        'num_class' : 26,
         'cond_drop_prob': 0.1,
         'device_ids' : args.device_ids,
         'unet_dim_mults' : (1, 2, 4, 8,),
@@ -180,11 +179,9 @@ if __name__ == '__main__':
         # others
         'seed' : 7777,
         'da_rate': 0.3,
-        'style_encoder_zdim' : 128,
-        'use_style_encoder' : True,
         'dataset_name' : 'myfonts', # 'myfonts' or 'google_fonts'
         'experiment_id' : str(len(glob('logs/*')) + 1),
-        'style_encoder_path' : './weight/style_encoder.pth',
+        'style_encoder_path' : './weight/style_encoder_fannet.pth', # './weight/style_encoder_fannet.pth' or './weight/style_encoder_fannet2.pth'
         'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
     }
 
@@ -197,7 +194,8 @@ if __name__ == '__main__':
         os.makedirs('weight')
 
     os.makedirs(f"logs/log{params['experiment_id']}")
-    params['model_filename'] = f"./weight/log{params['experiment_id']}_S{params['num_style']}_cfg"
+    encoder_name = params['style_encoder_path'].split('_')[-1].split('.')[0]
+    params['model_filename'] = f"./weight/log{params['experiment_id']}_{encoder_name}"
 
     freeze_seed(params['seed'])
 
@@ -206,17 +204,16 @@ if __name__ == '__main__':
         dim=params['unet_dim'],
         channels=params['channels'],
         dim_mults=params['unet_dim_mults'],
-        num_style=params['num_style'],
+        num_class=params['num_class'],
         cond_drop_prob=params['cond_drop_prob'],
-        use_style_encoder=params['use_style_encoder'],
     )
     model = torch.nn.DataParallel(model, device_ids=params['device_ids'])
     model.to(params['device'])
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
-    dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_style'],
-                                    params['style_encoder_path'], params['style_encoder_zdim'], params['dataset_name'], params['da_rate'])
+    dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_class'],
+                                    params['style_encoder_path'], params['dataset_name'], params['da_rate'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)
