@@ -156,6 +156,7 @@ def train(model, dataloader, optimizer, params):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0])
+    parser.add_argument('-encoder_name', '--encoder_name', help='encoder_name e.x. (-encoder_name fannet)', type=str, default='fannet')
     args = parser.parse_args()
 
     params = {
@@ -181,8 +182,8 @@ if __name__ == '__main__':
         'da_rate': 0.3,
         'dataset_name' : 'myfonts', # 'myfonts' or 'google_fonts'
         'experiment_id' : str(len(glob('logs/*')) + 1),
-        'style_encoder_path' : './weight/style_encoder_fannet.pth', # './weight/style_encoder_fannet.pth' or './weight/style_encoder_fannet2.pth'
-        'device' : args.device_ids[0] if torch.cuda.is_available() else 'cpu',
+        'style_encoder_path' : f'./weight/style_encoder_{args.encoder_name}.pth', # './weight/style_encoder_fannet.pth' or './weight/style_encoder_fannet2.pth'
+        'device' : f'cuda:{args.device_ids[0]}' if torch.cuda.is_available() else 'cpu',
     }
 
     # save先のディレクトリがなかったら作る
@@ -213,7 +214,7 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
     dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_class'],
-                                    params['style_encoder_path'], params['dataset_name'], params['da_rate'])
+                                    params['style_encoder_path'], params['device'], params['dataset_name'], params['da_rate'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)
