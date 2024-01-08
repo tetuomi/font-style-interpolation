@@ -162,8 +162,8 @@ if __name__ == '__main__':
     params = {
         # trainning
         'lr' : 1e-4,
-        'batch_size' : 16, # 256
-        'total_steps' : 2e5, 
+        'batch_size' : 256, # 256
+        'total_steps' : 3e5, 
 
         # model
         'channels' : 1,
@@ -180,9 +180,9 @@ if __name__ == '__main__':
         # others
         'seed' : 7777,
         'da_rate': 0.3,
+        'encoder_name' : args.encoder_name,
         'dataset_name' : 'myfonts', # 'myfonts' or 'google_fonts'
         'experiment_id' : str(len(glob('logs/*')) + 1),
-        'style_encoder_path' : f'./weight/style_encoder_{args.encoder_name}.pth', # './weight/style_encoder_fannet.pth' or './weight/style_encoder_fannet2.pth'
         'device' : f'cuda:{args.device_ids[0]}' if torch.cuda.is_available() else 'cpu',
     }
 
