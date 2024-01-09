@@ -139,9 +139,8 @@ def train(model, dataloader, optimizer, params):
 
                 with torch.no_grad():
                     model.eval()
-                    _classes = torch.tensor([i for i in range(26)] + [0 for _ in range(74)], device=params['device'])
-                    _style_id = [0 for _ in range(26)] + [26*(i+1) for i in range(100-26)]
-                    _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in _style_id]).to(params['device'])
+                    _classes = torch.tensor([dataloader.dataset[i][2] for i in range(100)], device=params['device'])
+                    _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in range(100)]).to(params['device'])
                     images = sample(model.module, _classes, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
                                     class_scale=1., style_scale=1., rescaled_phi=0.)
                     images = (images + 1) * 0.5
@@ -153,7 +152,6 @@ def train(model, dataloader, optimizer, params):
     print('saved model')
     writer.close()
 
-if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0])
     parser.add_argument('-encoder_name', '--encoder_name', help='encoder_name e.x. (-encoder_name fannet)', type=str, default='fannet')

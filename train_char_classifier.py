@@ -114,7 +114,6 @@ def train(model, dataloader_dict, optimizer, num_epochs, log_dir, device, model_
                     epoch_loss += loss.item() * img.size(0)
 
             epoch_ce_loss = epoch_ce_loss / len(dataloader_dict[phase].dataset)
-            epoch_rec_loss2 = epoch_rec_loss2 / len(dataloader_dict[phase].dataset)
             epoch_loss = epoch_loss / len(dataloader_dict[phase].dataset)
 
             writer.add_scalar('loss/' + phase + '/rec', epoch_ce_loss, epoch)

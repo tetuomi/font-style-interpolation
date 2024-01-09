@@ -148,7 +148,6 @@ def make_data_loader(batch_size, image_size, num_class, encoder_name, device, da
     elif dataset_name == 'myfonts':
         path_list = make_data_list_myfonts(num_class, model, image_size, device, margin=margin)
 
-
     train_dataset = LoadDataset(model, path_list['train'], da_rate=da_rate, image_size=image_size, margin=margin)
     val_dataset = LoadDataset(model, path_list['val'], da_rate=da_rate, image_size=image_size, margin=margin)
     test_dataset = LoadDataset(model, path_list['test'], da_rate=da_rate, image_size=image_size, margin=margin)
