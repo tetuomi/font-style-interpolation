@@ -1,3 +1,4 @@
+import os
 import math
 import random
 from inspect import isfunction
@@ -6,6 +7,8 @@ import cv2
 import numpy as np
 
 import torch
+from torchvision import transforms
+
 
 
 def freeze_seed(seed):
@@ -67,6 +70,16 @@ def preprocessing_myfonts(img,img_size=64,margin=0):
     img = np.pad(img,[(margin,margin),(margin,margin)], 'constant', constant_values=255.)
     img = cv2.resize(img, (img_size, img_size))
     return img / 255.
+
+def save_generated_image(imgs, save_dir, save_filename):
+    assert 0 <= imgs.min().item(), 'generated image must be normalized to [0, 1]'
+    assert imgs.size(0) == len(save_filename), 'imgs batch size and save_filename must be same'
+    to_pil = transforms.Compose([
+                transforms.ToPILImage(),
+            ])
+    for img, f in zip(imgs, save_filename):
+        img = to_pil(img)
+        img.save(os.path.join(save_dir, f + '.png'))
 
 def exists(x):
     return x is not None

@@ -56,3 +56,16 @@ class FANnet(nn.Module):
 
     def style_encode(self, x):
         return F.normalize(self.enc_img(x))
+    
+    def interpolate(self, x1, x2, char_label, alpha):
+        feat_x1 = self.enc_img(x1)
+        feat_x2 = self.enc_img(x2)
+        feat_x = alpha * feat_x1 + (1 - alpha) * feat_x2
+        feat_label = self.enc_label(char_label)
+        
+        feat = torch.cat((feat_x, feat_label), axis=1)
+        feat = self.enc(feat)
+        feat = feat.reshape(-1, 16, 8, 8)
+        y = self.dec(feat)
+        
+        return y
