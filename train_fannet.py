@@ -34,18 +34,14 @@ class LoadDataset(data.Dataset):
         img = torch.tensor(preprocessing_myfonts(img, img_size=self.image_size, margin=self.margin))
         img = img.unsqueeze(0).float()
 
-        pair_path = self.data_list[random.randint(0, len(self.data_list)-1)]['path']
-        pair_img = np.load(pair_path)['arr_0'][random.randint(0, self.num_char-1)]
-        pair_img = torch.tensor(preprocessing_myfonts(pair_img, img_size=self.image_size, margin=self.margin))
-        pair_img = pair_img.unsqueeze(0).float()
-
-        gt_img = np.load(pair_path)['arr_0'][char]
+        gt_label = random.randint(0, self.num_char-1)
+        gt_img = np.load(path)['arr_0'][gt_label]
         gt_img = torch.tensor(preprocessing_myfonts(gt_img, img_size=self.image_size, margin=self.margin))
         gt_img = gt_img.unsqueeze(0).float()
-        
-        onehot_label = nn.functional.one_hot(torch.tensor(char), num_classes=self.num_char).float()
 
-        return img, pair_img, gt_img, onehot_label
+        gt_onehot_label = nn.functional.one_hot(torch.tensor(gt_label), num_classes=self.num_char).float()
+
+        return img, gt_img, gt_onehot_label
 
 def make_data_list(num_char):
     data_list = {'train': [], 'val': [], 'test': []}
@@ -88,7 +84,6 @@ def train(model, dataloader_dict, optimizer, num_epochs, log_dir, device, model_
 
     PATIENT_TIME = 50
     W_REC = 1e0
-    W_REC2 = 1e0
 
     for epoch in range(num_epochs):
         print('')
@@ -101,41 +96,34 @@ def train(model, dataloader_dict, optimizer, num_epochs, log_dir, device, model_
 
             epoch_loss = 0.0
             epoch_rec_loss = 0.0
-            epoch_rec_loss2 = 0.0
 
-            for img, pair, gt, label in dataloader_dict[phase]:
+            for img, gt, gt_label in dataloader_dict[phase]:
                 img = img.to(device)
-                pair = pair.to(device)
                 gt = gt.to(device)
-                label = label.to(device)
+                gt_label = gt_label.to(device)
 
                 optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == 'train'):
-                    y = model(img, label)
-                    pair_y = model(pair, label)
+                    y = model(img, gt_label)
 
                     # Compute loss
-                    rec_loss = nn.L1Loss()(y, img)
-                    rec_loss2 = nn.L1Loss()(pair_y, gt)
+                    rec_loss = nn.L1Loss()(y, gt)
 
                     ## summarize loss
-                    loss = W_REC*rec_loss + W_REC2*rec_loss2
+                    loss = W_REC*rec_loss
 
                     if phase == 'train':
                         loss.backward()
                         optimizer.step()
 
                     epoch_rec_loss += rec_loss.item() * img.size(0)
-                    epoch_rec_loss2 += rec_loss2.item() * img.size(0)
                     epoch_loss += loss.item() * img.size(0)
 
             epoch_rec_loss = epoch_rec_loss / len(dataloader_dict[phase].dataset)
-            epoch_rec_loss2 = epoch_rec_loss2 / len(dataloader_dict[phase].dataset)
             epoch_loss = epoch_loss / len(dataloader_dict[phase].dataset)
 
             writer.add_scalar('loss/' + phase + '/rec', epoch_rec_loss, epoch)
-            writer.add_scalar('loss/' + phase + '/rec2', epoch_rec_loss2, epoch)
             writer.add_scalar('loss/' + phase + '/total', epoch_loss, epoch)
 
             print('Epoch {}/{}  {} Loss: {:.4f} (min val loss: {:.4f})'.format(epoch+1, num_epochs, phase, epoch_loss, min_val_loss))
@@ -164,8 +152,8 @@ if __name__=='__main__':
     NUM_CHAR = 26
     IMAGE_SIZE = 64
     BATCH_SIZE = 512
-    MODEL_NAME = 'fannet2' # 'fannet', 'fannet2'
-    MODEL_PATH = f'./weight/style_encoder_{MODEL_NAME}.pth'
+    MODEL_NAME = 'fannet' # 'fannet', 'fannet2'
+    MODEL_PATH = f'./weight/style_encoder_{MODEL_NAME}_retrain.pth'
     DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     # save先のディレクトリがなかったら作る
@@ -183,14 +171,14 @@ if __name__=='__main__':
 
     if MODEL_NAME == 'fannet':
         model = FANnet(NUM_CHAR)
-    elif MODEL_NAME == 'fannet2':        
+    elif MODEL_NAME == 'fannet2':
         model = StyleEncoder(NUM_CHAR)
     else:
         raise ValueError('MODEL_NAME must be fannet or fannet2')
-    
+
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
 
     train(model, dataloader_dict, optimizer, EPOCHS, log_dir, DEVICE, MODEL_PATH)
-    
+
     # send slack message
     requests.post(os.getenv('SLACK_URL'), data=json.dumps({'text': f":white_check_mark: log{num_log_dir} All finished !!!"}))
