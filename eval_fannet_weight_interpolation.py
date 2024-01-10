@@ -81,6 +81,7 @@ if __name__ == '__main__':
 
     freeze_seed(SEED)
     print(f'Using device: {DEVICE}')
+    print('FANnet')
 
     dataloader = make_data_loader(BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY)
 
@@ -93,7 +94,7 @@ if __name__ == '__main__':
     for cate in CATEGORY:
         # make dir
         os.makedirs(os.path.join(SAVE_IMG_DIR, cate), exist_ok=True)
-        
+
         for light_img, bold_img, label, gt_img, gt_fontname in dataloader[cate]:
             with torch.no_grad():
                 light_img = light_img.to(DEVICE)
@@ -103,10 +104,10 @@ if __name__ == '__main__':
 
                 # interpolation
                 gen = model.interpolate(light_img, bold_img, label, ALPHA)
-                
+
                 # calc loss
                 loss[cate] += nn.MSELoss()(gen, gt_img).item() * light_img.size(0)
-                
+
                 # save generated image
                 save_filename = [n + '_' + chr(l + ord('A')) for n, l in zip(gt_fontname, torch.argmax(label.cpu().detach(), dim=1))]
                 save_generated_image(gen.cpu().detach().clone(), os.path.join(SAVE_IMG_DIR, cate), save_filename)

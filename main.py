@@ -152,6 +152,7 @@ def train(model, dataloader, optimizer, params):
     print('saved model')
     writer.close()
 
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0])
     parser.add_argument('-encoder_name', '--encoder_name', help='encoder_name e.x. (-encoder_name fannet)', type=str, default='fannet')
@@ -161,7 +162,7 @@ def train(model, dataloader, optimizer, params):
         # trainning
         'lr' : 1e-4,
         'batch_size' : 256, # 256
-        'total_steps' : 3e5, 
+        'total_steps' : 3e5,
 
         # model
         'channels' : 1,
