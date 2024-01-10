@@ -154,7 +154,7 @@ def train(model, dataloader, optimizer, params):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0])
+    parser.add_argument('-device', '--device_ids', nargs='*', help='device_ids e.x. (-device 0 1 2)', type=int, default=[0, 1, 2, 3])
     parser.add_argument('-encoder_name', '--encoder_name', help='encoder_name e.x. (-encoder_name fannet)', type=str, default='fannet')
     args = parser.parse_args()
 
@@ -194,8 +194,7 @@ if __name__ == '__main__':
         os.makedirs('weight')
 
     os.makedirs(f"logs/log{params['experiment_id']}")
-    encoder_name = params['style_encoder_path'].split('_')[-1].split('.')[0]
-    params['model_filename'] = f"./weight/log{params['experiment_id']}_{encoder_name}"
+    params['model_filename'] = f"./weight/log{params['experiment_id']}_{params['encoder_name']}"
 
     freeze_seed(params['seed'])
 
@@ -213,7 +212,7 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
     dataloader = make_data_loader(params['batch_size'], params['image_size'], params['num_class'],
-                                    params['style_encoder_path'], params['device'], params['dataset_name'], params['da_rate'])
+                                    params['encoder_name'], params['device'], params['dataset_name'], params['da_rate'])
 
     # train the model
     train(model, dataloader['train'], optimizer, params)
