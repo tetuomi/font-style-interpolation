@@ -375,6 +375,7 @@ class Unet(nn.Module):
         return self.final_conv(x)
 
     def forward_with_emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5, class_drop_prob=None, style_drop_prob=None):
+        # HACK: forward(...)を使う
         batch, device = x.shape[0], x.device
 
         class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
