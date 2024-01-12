@@ -286,9 +286,8 @@ class Unet(nn.Module):
         self.final_conv = nn.Conv2d(dim, self.out_dim, 1)
 
     def forward_with_cond_scale(self, *args, class_scale=1., style_scale=1., rescaled_phi=0., **kwargs):
-        logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
-
         if class_scale == 1. and style_scale == 1.:
+            logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
             return logits
 
         class_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 0., **kwargs)
