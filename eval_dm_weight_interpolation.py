@@ -350,8 +350,8 @@ if __name__ == '__main__':
         f.write(f'{APPROACH} weight interpolation\n')
         f.write(MODEL_PATH + '\n')
         if APPROACH == 'Image':
-            f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE},\
-                    style1 scale: {STYLE_SCALE}, style2 scale: {STYLE2_SCALE}\n')
+            f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE}, '\
+                    f'style1 scale: {STYLE_SCALE}, style2 scale: {STYLE2_SCALE}\n')
         else:
             f.write(f'class scale: {CLASS_SCALE}, style scale: {STYLE_SCALE}\n')
         for cate, loss in loss.items():

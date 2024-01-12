@@ -127,7 +127,7 @@ if __name__ == '__main__':
                 style2_correct[cate] += torch.sum(style2_pred == label.data)
 
                 # # save generated image
-                save_filename = [s1 + '_' + s2 + '_gt_' + chr(gt + ord('A')) + '_pred_' + chr(p + ord('A'))\
+                save_filename = [s1 + '_' + s2 + '_gt_' + chr(gt + ord('A')) + '_pred_' + chr(p + ord('A')) \
                                     for s1, s2, gt, p in zip(style1_name, style2_name, label, pred)]
                 save_generated_image(gen.cpu().detach().clone(), os.path.join(SAVE_IMG_DIR, cate), save_filename)
 
