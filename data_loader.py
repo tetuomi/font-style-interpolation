@@ -135,7 +135,7 @@ def make_data_loader(batch_size, image_size, num_class, encoder_name, device, da
     elif encoder_name == 'fannet2':
         model = StyleEncoder(num_class)
     else:
-        raise ValueError('encoder_name must be fannet or fannet2')
+        model = FANnet(num_class)
 
     model.to(device)
     model.load_state_dict(torch.load(f'./weight/style_encoder_{encoder_name}.pth', map_location=device))
