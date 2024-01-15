@@ -118,6 +118,6 @@ if __name__ == '__main__':
     with open(SAVE_TXT_PATH, 'a') as f:
         f.write('\n========================\n')
         f.write('FANnet weight interpolation\n')
-        f.write(MODEL_PATH + '\n')
+        f.write(f'MODEL: {MODEL_PATH}\n')
         for cate, loss in loss.items():
             f.write(f'{cate} MSE: {loss:.3f}\n')

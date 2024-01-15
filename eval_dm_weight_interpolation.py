@@ -259,7 +259,7 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 if __name__ == '__main__':
     # important experiment parameters
     ALPHA = 0.5        # blending rate
-    APPROACH = 'Image' # must be 'Noise' or 'Condition' or 'Image'
+    APPROACH = 'Noise' # must be 'Noise' or 'Condition' or 'Image'
     CLASS_SCALE = 1.   # Common to three approaches
     STYLE_SCALE = 1.   # Noise or Condition
     SAMPLING_T = 400   # Image
@@ -271,8 +271,8 @@ if __name__ == '__main__':
     UNET_DIM = 128
     NUM_CLASS = 26
     UNET_DIM_MULTS = (1, 2, 4, 8,)
-    ENCODER_PATH = './weight/style_encoder_fannet.pth'
-    MODEL_PATH = './weight/log33_fannet_step_320000.pth'
+    ENCODER_PATH = './weight/style_encoder_fannet_retrain.pth'
+    MODEL_PATH = './weight/log39_fannet_retrain_step_250000.pth'
 
     # others
     SEED = 7777
@@ -348,7 +348,7 @@ if __name__ == '__main__':
     with open(SAVE_TXT_PATH, 'a') as f:
         f.write('\n========================\n')
         f.write(f'{APPROACH} weight interpolation\n')
-        f.write(MODEL_PATH + '\n')
+        f.write(f'MODEL: {MODEL_PATH}\n')
         if APPROACH == 'Image':
             f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE}, '\
                     f'style1 scale: {STYLE_SCALE}, style2 scale: {STYLE2_SCALE}\n')
