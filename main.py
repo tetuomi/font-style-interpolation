@@ -139,8 +139,8 @@ def train(model, dataloader, optimizer, params):
 
                 with torch.no_grad():
                     model.eval()
-                    _classes = torch.tensor([dataloader.dataset[i][2] for i in range(100)], device=params['device'])
-                    _style = torch.cat([dataloader.dataset[i][1].unsqueeze(0) for i in range(100)]).to(params['device'])
+                    _classes = torch.tensor([i for i in range(26)] + [0]*74, device=params['device'])
+                    _style = torch.cat([dataloader.dataset[0][1].unsqueeze(0) for _ in range(26)] + [dataloader.dataset[26*i][1].unsqueeze(0) for i in range(74)]).to(params['device'])
                     images = sample(model.module, _classes, _style, params['image_size'], batch_size=_style.size(0), channels=params['channels'],
                                     class_scale=1., style_scale=1., rescaled_phi=0.)
                     images = (images + 1) * 0.5
