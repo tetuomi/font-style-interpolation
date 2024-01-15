@@ -71,7 +71,7 @@ if __name__ == '__main__':
     NUM_CLASS = 26
     IMAGE_SIZE = 64
     BATCH_SIZE = 16
-    CLASSIFIER_PATH = './weight/char_classifier.pth'
+    CLASSIFIER_PATH = './weight/char_classifier2.pth'
     SAVE_IMG_DIR = 'result/letter_recognition/FANnet'
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
 
-    classifier = models.resnet50()
+    classifier = models.resnet18()
     classifier.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     classifier.fc = nn.Linear(classifier.fc.in_features, NUM_CLASS)
     classifier.to(DEVICE)
@@ -141,7 +141,8 @@ if __name__ == '__main__':
     with open(SAVE_TXT_PATH, 'a') as f:
         f.write('\n========================\n')
         f.write('FANnet letter_recognition\n')
-        f.write(MODEL_PATH + '\n')
+        f.write(f'CLASSIFIER: {CLASSIFIER_PATH}\n')
+        f.write(f'MODEL: {MODEL_PATH}\n')
         # write result of generated image
         f.write('generated image ACC\n')
         for cate, acc in correct.items():
