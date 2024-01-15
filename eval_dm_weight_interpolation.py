@@ -194,10 +194,14 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., st
 
     for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
         t = torch.full((b,), time, device=device, dtype=torch.long)
-        style1_noise = model.forward_with_cond_scale(x, t, classes, style1,\
-                                                    class_scale=class_scale, style_scale=style_scale, rescaled_phi=0.)
-        style2_noise = model.forward_with_cond_scale(x, t, classes, style2,\
-                                                    class_scale=class_scale, style_scale=style_scale, rescaled_phi=0.)
+        nocond_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=1.)
+        class_logits  = model(x, t, classes, style1, class_drop_prob=0., style_drop_prob=1.)
+        style1_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=0.)
+        style2_logits = model(x, t, classes, style2, class_drop_prob=1., style_drop_prob=0.)
+
+        style1_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style1_logits - nocond_logits)
+        style2_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style2_logits - nocond_logits)
+        
         # noise blend
         pred_noise = alpha * style1_noise + (1-alpha) * style2_noise
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
