@@ -116,7 +116,7 @@ def train(model, dataloader_dict, optimizer, num_epochs, log_dir, device, model_
             epoch_ce_loss = epoch_ce_loss / len(dataloader_dict[phase].dataset)
             epoch_loss = epoch_loss / len(dataloader_dict[phase].dataset)
 
-            writer.add_scalar('loss/' + phase + '/rec', epoch_ce_loss, epoch)
+            writer.add_scalar('loss/' + phase + '/ce', epoch_ce_loss, epoch)
             writer.add_scalar('loss/' + phase + '/total', epoch_loss, epoch)
 
             print('Epoch {}/{}  {} Loss: {:.4f} (min val loss: {:.4f})'.format(epoch+1, num_epochs, phase, epoch_loss, min_val_loss))
@@ -145,7 +145,7 @@ if __name__=='__main__':
     NUM_CHAR = 26
     IMAGE_SIZE = 64
     BATCH_SIZE = 512
-    MODEL_PATH = f'./weight/char_classifier.pth'
+    MODEL_PATH = f'./weight/char_classifier2.pth'
     DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
     # save先のディレクトリがなかったら作る
@@ -161,7 +161,7 @@ if __name__=='__main__':
 
     dataloader_dict = make_data_loader(BATCH_SIZE, NUM_CHAR, image_size=IMAGE_SIZE)
 
-    model = models.resnet50()
+    model = models.resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
     model.fc = nn.Linear(model.fc.in_features, NUM_CHAR)
 
