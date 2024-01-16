@@ -1,3 +1,4 @@
+import argparse
 from tqdm import tqdm
 
 import pandas as pd
@@ -257,9 +258,13 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-approach', '--approach', nargs='*', help='approach e.x. (-approach Noise)', type=str, default='Noise')
+    args = parser.parse_args()
+    
     # important experiment parameters
     ALPHA = 0.5        # blending rate
-    APPROACH = 'Noise' # must be 'Noise' or 'Condition' or 'Image'
+    APPROACH = args.approach # must be 'Noise' or 'Condition' or 'Image'
     CLASS_SCALE = 1.   # Common to three approaches
     STYLE_SCALE = 1.   # Noise or Condition
     SAMPLING_T = 500   # Image
@@ -272,7 +277,7 @@ if __name__ == '__main__':
     NUM_CLASS = 26
     UNET_DIM_MULTS = (1, 2, 4, 8,)
     ENCODER_PATH = './weight/style_encoder_fannet_retrain.pth'
-    MODEL_PATH = './weight/log39_fannet_retrain_step_250000.pth'
+    MODEL_PATH = './weight/log39_fannet_retrain_step_350000.pth'
 
     # others
     SEED = 7777
