@@ -259,7 +259,7 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-approach', '--approach', nargs='*', help='approach e.x. (-approach Noise)', type=str, default='Noise')
+    parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
     args = parser.parse_args()
     
     # important experiment parameters
