@@ -276,7 +276,7 @@ if __name__ == '__main__':
     NUM_CLASS = 26
     UNET_DIM_MULTS = (1, 2, 4, 8,)
     ENCODER_PATH = './weight/style_encoder_fannet_retrain.pth'
-    MODEL_PATH = './weight/log39_fannet_retrain_step_250000.pth'
+    MODEL_PATH = './weight/log38_fannet_retrain_step_final.pth'
 
     # others
     SEED = 7777
@@ -339,11 +339,12 @@ if __name__ == '__main__':
 
             # calc loss
             with torch.no_grad():
-                loss[cate] += nn.MSELoss()(torch.clamp(gen, min=-1., max=1.), gt_img).item() * label.size(0)
+                gen_from_0_to_1 = torch.clamp((gen.cpu().detach().clone()+1)*0.5,    min=0., max=1.)
+                gt_from_0_to_1  = torch.clamp((gt_img.cpu().detach().clone()+1)*0.5, min=0., max=1.)
+                loss[cate] += nn.MSELoss()(gen_from_0_to_1, gt_from_0_to_1).item() * label.size(0)
 
             # save generated image
             save_filename = [n + '_' + chr(l + ord('A')) for n, l in zip(gt_fontname, label.cpu().detach().clone())]
-            gen_from_0_to_1 = torch.clamp((gen.cpu().detach().clone()+1)*0.5, min=0., max=1.)
             save_generated_image(gen_from_0_to_1, os.path.join(SAVE_IMG_DIR, cate), save_filename)
 
         loss[cate] /= len(dataloader[cate].dataset)
