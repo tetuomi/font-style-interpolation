@@ -95,11 +95,11 @@ class Block(nn.Module):
 class ResnetBlock(nn.Module):
     """https://arxiv.org/abs/1512.03385"""
 
-    def __init__(self, dim, dim_out, *, time_emb_dim=None, classes_emb_dim=None, style_emb_dim=None, groups=8):
+    def __init__(self, dim, dim_out, *, time_emb_dim=None, style_emb_dim=None, groups=8):
         super().__init__()
         self.mlp = (
-            nn.Sequential(nn.SiLU(), nn.Linear(int(time_emb_dim) + int(classes_emb_dim) + int(style_emb_dim), dim_out * 2))
-            if exists(time_emb_dim) or exists(classes_emb_dim) or exists(style_emb_dim)
+            nn.Sequential(nn.SiLU(), nn.Linear(int(time_emb_dim) + int(style_emb_dim), dim_out * 2))
+            if exists(time_emb_dim) or exists(style_emb_dim)
             else None
         )
 
@@ -107,10 +107,10 @@ class ResnetBlock(nn.Module):
         self.block2 = Block(dim_out, dim_out, groups=groups)
         self.res_conv = nn.Conv2d(dim, dim_out, 1) if dim != dim_out else nn.Identity()
 
-    def forward(self, x, time_emb=None, class_emb=None, style_emb=None):
+    def forward(self, x, time_emb=None, style_emb=None):
         scale_shift = None
-        if exists(self.mlp) and (exists(time_emb) or exists(class_emb) or exists(style_emb)):
-            cond_emb = tuple(filter(exists, (time_emb, class_emb, style_emb)))
+        if exists(self.mlp) and (exists(time_emb) or exists(style_emb)):
+            cond_emb = tuple(filter(exists, (time_emb, style_emb)))
             cond_emb = torch.cat(cond_emb, dim = -1)
             cond_emb = self.mlp(cond_emb)
             cond_emb = rearrange(cond_emb, 'b c -> b c 1 1')
@@ -187,7 +187,6 @@ class Unet(nn.Module):
     def __init__(
         self,
         dim,
-        num_class,
         cond_drop_prob=0.1,
         init_dim=None,
         out_dim=None,
@@ -223,17 +222,6 @@ class Unet(nn.Module):
             nn.Linear(time_dim, time_dim),
         )
 
-        # class embeddings
-        classes_dim = dim * 4
-        self.classes_emb = nn.Embedding(num_class, dim)
-        self.null_classes_emb = nn.Parameter(torch.randn(dim))
-
-        self.classes_mlp = nn.Sequential(
-            nn.Linear(dim, classes_dim),
-            nn.GELU(),
-            nn.Linear(classes_dim, classes_dim)
-        )
-
         # style embeddings
         style_dim = dim * 4
         self.null_style_emb = nn.Parameter(torch.randn(style_dim))
@@ -249,8 +237,8 @@ class Unet(nn.Module):
             self.downs.append(
                 nn.ModuleList(
                     [
-                        block_klass(dim_in, dim_in, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim),
-                        block_klass(dim_in, dim_in, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim),
+                        block_klass(dim_in, dim_in, time_emb_dim=time_dim, style_emb_dim=style_dim),
+                        block_klass(dim_in, dim_in, time_emb_dim=time_dim, style_emb_dim=style_dim),
                         Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                         Downsample(dim_in, dim_out)
                         if not is_last
@@ -260,9 +248,9 @@ class Unet(nn.Module):
             )
 
         mid_dim = dims[-1]
-        self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
+        self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim, style_emb_dim=style_dim)
         self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim)))
-        self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
+        self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim=time_dim, style_emb_dim=style_dim)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind == (len(in_out) - 1)
@@ -270,8 +258,8 @@ class Unet(nn.Module):
             self.ups.append(
                 nn.ModuleList(
                     [
-                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim),
-                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim),
+                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim, style_emb_dim=style_dim),
+                        block_klass(dim_out + dim_in, dim_out, time_emb_dim=time_dim, style_emb_dim=style_dim),
                         Residual(PreNorm(dim_out, LinearAttention(dim_out))),
                         Upsample(dim_out, dim_in)
                         if not is_last
@@ -282,19 +270,18 @@ class Unet(nn.Module):
 
         self.out_dim = default(out_dim, channels)
 
-        self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
+        self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim, style_emb_dim=style_dim)
         self.final_conv = nn.Conv2d(dim, self.out_dim, 1)
 
-    def forward_with_cond_scale(self, *args, class_scale=1., style_scale=1., rescaled_phi=0., **kwargs):
-        if class_scale == 1. and style_scale == 1.:
-            logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
+    def forward_with_cond_scale(self, *args, style_scale=1., rescaled_phi=0., **kwargs):
+        logits = self.forward(*args, style_drop_prob = 0., **kwargs)
+
+        if style_scale == 1.:
             return logits
 
-        class_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 0., **kwargs)
-        style_null_logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 1., **kwargs)
-        null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
+        null_logits = self.forward(*args, style_drop_prob = 1., **kwargs)
 
-        scaled_logits = null_logits + style_scale * (class_null_logits - null_logits) + class_scale * (style_null_logits - null_logits)
+        scaled_logits = (logits - null_logits) * style_scale + null_logits
 
         if rescaled_phi == 0.:
             return scaled_logits
@@ -304,26 +291,12 @@ class Unet(nn.Module):
 
         return rescaled_logits * rescaled_phi + scaled_logits * (1. - rescaled_phi)
 
-    def forward(self, x, time, classes, style, class_drop_prob=None, style_drop_prob=None):
+    def forward(self, x, time, style, style_drop_prob=None):
         batch, device = x.shape[0], x.device
-        class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
         style_drop_prob = default(style_drop_prob, self.cond_drop_prob)
-
-        if class_drop_prob > 0:
-            class_keep_mask = prob_mask_like((batch,), 1 - class_drop_prob, device = device)
 
         if style_drop_prob > 0:
             style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
-
-        # class embeddings
-        classes_emb = self.classes_emb(classes)
-        if class_drop_prob > 0:
-            null_classes_emb = repeat(self.null_classes_emb, 'd -> b d', b = batch)
-            classes_emb = torch.where(
-                rearrange(class_keep_mask, 'b -> b 1'),
-                classes_emb,
-                null_classes_emb
-            )
 
         # style embeddings
         if style_drop_prob > 0:
@@ -334,7 +307,6 @@ class Unet(nn.Module):
                 null_style_emb
             )
 
-        c = self.classes_mlp(classes_emb)
         s = style
 
         x = self.init_conv(x)
@@ -345,32 +317,32 @@ class Unet(nn.Module):
         h = []
 
         for block1, block2, attn, downsample in self.downs:
-            x = block1(x, t, c, s)
+            x = block1(x, t, s)
             h.append(x)
 
-            x = block2(x, t, c, s)
+            x = block2(x, t, s)
             x = attn(x)
             h.append(x)
 
             x = downsample(x)
 
-        x = self.mid_block1(x, t, c, s)
+        x = self.mid_block1(x, t, s)
         x = self.mid_attn(x)
-        x = self.mid_block2(x, t, c, s)
+        x = self.mid_block2(x, t, s)
 
         for block1, block2, attn, upsample in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
-            x = block1(x, t, c, s)
+            x = block1(x, t, s)
 
             x = torch.cat((x, h.pop()), dim=1)
-            x = block2(x, t, c, s)
+            x = block2(x, t, s)
             x = attn(x)
 
             x = upsample(x)
 
         x = torch.cat((x, r), dim=1)
 
-        x = self.final_res_block(x, t, c, s)
+        x = self.final_res_block(x, t, s)
         return self.final_conv(x)
 
     def forward_with_emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5, class_drop_prob=None, style_drop_prob=None):

@@ -39,14 +39,14 @@ class LoadDataset(data.Dataset):
         return len(self.path_list)
 
     def __getitem__(self, index):
-        img, feature, label = self.path_list[index]
+        img, feature = self.path_list[index]
 
         if random() < self.da_rate:
             img = self.da_transform(img)
 
-        return img, feature, label
+        return img, feature
 
-def make_data_list_google_font(num_class, model, image_size, device, margin=5):
+def make_data_list_google_font(num_class, model, learning_chars, image_size, device, margin=5):
     data_list = {'train': [], 'val': [], 'test': []}
     df = pd.read_csv('csv_files/google_fonts_drop_none.csv')
     transform = Compose([
@@ -65,7 +65,7 @@ def make_data_list_google_font(num_class, model, image_size, device, margin=5):
             p = os.path.join('../font2img/image', row['font'])
             if os.path.isdir(p) == False: continue
 
-            for label in range(num_class):
+            for label in range(26):
                 img = cv2.imread(os.path.join(p, f"{chr(label + ord('A'))}.png"), 0)
                 img = preprocessing(img, img_size=image_size, margin=margin)
                 img = transform(img).float()
@@ -84,7 +84,8 @@ def make_data_list_google_font(num_class, model, image_size, device, margin=5):
         for i in range(imgs.size(0)):
             if i % num_class == 0:
                 ave_feat = feats[i:i+num_class].mean(dim=0)
-            data_list[data_type].append((imgs[i], ave_feat, torch.tensor(i%num_class)))
+            if chr(i%num_class + ord('A')) in learning_chars:
+                data_list[data_type].append((imgs[i], ave_feat))
 
     print('TRAIN SIZE: {}'.format(len(data_list['train'])))
     print('VAL SIZE: {}'.format(len(data_list['val'])))
@@ -92,7 +93,7 @@ def make_data_list_google_font(num_class, model, image_size, device, margin=5):
 
     return data_list
 
-def make_data_list_myfonts(num_class, model, image_size, device, margin=5):
+def make_data_list_myfonts(num_class, model, learning_chars, image_size, device, margin=5):
     data_list = {'train': [], 'val': [], 'test': []}
 
     for data_type in ['train', 'val', 'test']:
@@ -100,7 +101,7 @@ def make_data_list_myfonts(num_class, model, image_size, device, margin=5):
 
         imgs = []
         for i in range(len(path_list)):
-            for label in range(num_class):
+            for label in range(26):
                 img = np.load(path_list[i])['arr_0'][label]
                 img = transform(preprocessing_myfonts(img, img_size=image_size, margin=margin)).float()
                 imgs.append(img)
@@ -118,7 +119,8 @@ def make_data_list_myfonts(num_class, model, image_size, device, margin=5):
         for i in range(imgs.size(0)):
             if i % num_class == 0:
                 ave_feat = feats[i:i+num_class].mean(dim=0)
-            data_list[data_type].append((imgs[i], ave_feat, torch.tensor(i%num_class)))
+            if chr(i%num_class + ord('A')) in learning_chars:
+                data_list[data_type].append((imgs[i], ave_feat))
 
     print('TRAIN SIZE: {}'.format(len(data_list['train'])))
     print('VAL SIZE: {}'.format(len(data_list['val'])))
@@ -126,10 +128,12 @@ def make_data_list_myfonts(num_class, model, image_size, device, margin=5):
 
     return data_list
 
-def make_data_loader(batch_size, image_size, num_class, encoder_name, device, dataset_name='google_fonts', da_rate=0., margin=5):
+def make_data_loader(batch_size, image_size, learning_chars, encoder_name, device, dataset_name='google_fonts', da_rate=0., margin=5):
     print(f'DATASET NAME IS {dataset_name}')
     print(f'STYLE ENCODER IS {encoder_name}')
-
+    print(f'USING CHARACTERS ARE {learning_chars}')
+    
+    num_class = 26
     if encoder_name == 'fannet':
         model = FANnet(num_class)
     elif encoder_name == 'fannet2':
@@ -143,10 +147,10 @@ def make_data_loader(batch_size, image_size, num_class, encoder_name, device, da
 
     assert dataset_name in ['google_fonts', 'myfonts'], f'dataset_name must be google_fonts or myfonts. but {dataset_name} is given.'
     if dataset_name == 'google_fonts':
-        path_list = make_data_list_google_font(num_class, model, image_size, device, margin=margin)
+        path_list = make_data_list_google_font(num_class, model, learning_chars, image_size, device, margin=margin)
         pass
     elif dataset_name == 'myfonts':
-        path_list = make_data_list_myfonts(num_class, model, image_size, device, margin=margin)
+        path_list = make_data_list_myfonts(num_class, model, learning_chars, image_size, device, margin=margin)
 
     train_dataset = LoadDataset(model, path_list['train'], da_rate=da_rate, image_size=image_size, margin=margin)
     val_dataset = LoadDataset(model, path_list['val'], da_rate=da_rate, image_size=image_size, margin=margin)
