@@ -198,7 +198,7 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., st
 
         style1_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style1_logits - nocond_logits)
         style2_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style2_logits - nocond_logits)
-        
+
         # noise blend
         pred_noise = alpha * style1_noise + (1-alpha) * style2_noise
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
@@ -261,15 +261,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
     args = parser.parse_args()
-    
+
     # important experiment parameters
-    ALPHA = 0.5        # blending rate
-    APPROACH = args.approach # must be 'Noise' or 'Condition' or 'Image'
-    CLASS_SCALE = 1.   # Common to three approaches
-    STYLE_SCALE = 1.   # Noise or Condition
-    SAMPLING_T = 500   # Image
-    STYLE1_SCALE = 0.  # Image
-    STYLE2_SCALE = 0.  # Image
+    ALPHA = 0.5                  # blending rate
+    APPROACH = args.approach     # must be 'Noise' or 'Condition' or 'Image'
+    CLASS_SCALE = 1.             # Common to three approaches
+    STYLE_SCALE = 1.             # Noise or Condition
+    SAMPLING_T = 500             # Image
+    CLASS_SCALE_FOR_IMAGE = 0.   # Image
+    STYLE1_SCALE_FOR_IMAGE = 0.  # Image
+    STYLE2_SCALE_FOR_IMAGE = 0.  # Image
 
     # DM
     CHANNELS = 1
@@ -343,7 +344,8 @@ if __name__ == '__main__':
                                                     alpha=ALPHA, image_size=IMAGE_SIZE)
             elif APPROACH == 'Image':
                 gen = image_blend(model, label, style1_feat, style2_feat, style1_img, style2_img, \
-                                class_scale=CLASS_SCALE, style1_scale=STYLE1_SCALE, style2_scale=STYLE2_SCALE, \
+                                class_scale=CLASS_SCALE_FOR_IMAGE, \
+                                style1_scale=STYLE1_SCALE_FOR_IMAGE, style2_scale=STYLE2_SCALE_FOR_IMAGE, \
                                 sampling_t=SAMPLING_T)
             else:
                 raise ValueError('APPROACH must be Noise or Condition or Image')
@@ -370,8 +372,8 @@ if __name__ == '__main__':
         f.write(f'CLASSIFIER: {CLASSIFIER_PATH}\n')
         f.write(f'MODEL: {MODEL_PATH}\n')
         if APPROACH == 'Image':
-            f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE}, '\
-                    f'style1 scale: {STYLE_SCALE}, style2 scale: {STYLE2_SCALE}\n')
+            f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE_FOR_IMAGE}, '\
+                    f'style1 scale: {STYLE1_SCALE_FOR_IMAGE}, style2 scale: {STYLE2_SCALE_FOR_IMAGE}\n')
         else:
             f.write(f'class scale: {CLASS_SCALE}, style scale: {STYLE_SCALE}\n')
         for cate, acc in acc.items():
