@@ -141,7 +141,7 @@ def q_sample(x_start, t, noise=None):
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
 @torch.no_grad()
-def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., style_scale=1., alpha=0.5, image_size=64):
+def condition_blend_sampling_ddim(model, classes, style1, style2, scale=1., alpha=0.5, image_size=64):
     b = classes.shape[0]
     device = classes.device
     x = torch.randn(b, 1, image_size, image_size).to(device)
@@ -159,8 +159,7 @@ def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1.
 
     for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
         t = torch.full((b,), time, device=device, dtype=torch.long)
-        pred_noise = model.forward_with_cond_scale(x, t, classes, style,\
-                                                class_scale=class_scale, style_scale=style_scale, rescaled_phi=0.)
+        pred_noise = model.forward_with_cond_scale(x, t, classes, style, scale=scale)
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
                         extract(sqrt_recipm1_alphas_cumprod, t, x.shape) * pred_noise
 
@@ -180,7 +179,7 @@ def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1.
     return x
 
 @torch.no_grad()
-def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., style_scale=1., alpha=0.5, image_size=64):
+def noise_blend_sampling_ddim(model, classes, style1, style2, scale=1., alpha=0.5, image_size=64):
     b = classes.shape[0]
     device = classes.device
     x = torch.randn(b, 1, image_size, image_size).to(device)
@@ -196,13 +195,12 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., st
     for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
         t = torch.full((b,), time, device=device, dtype=torch.long)
         nocond_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=1.)
-        class_logits  = model(x, t, classes, style1, class_drop_prob=0., style_drop_prob=1.)
-        style1_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=0.)
-        style2_logits = model(x, t, classes, style2, class_drop_prob=1., style_drop_prob=0.)
+        style1_logits = model(x, t, classes, style1, class_drop_prob=0., style_drop_prob=0.)
+        style2_logits = model(x, t, classes, style2, class_drop_prob=0., style_drop_prob=0.)
 
-        style1_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style1_logits - nocond_logits)
-        style2_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style2_logits - nocond_logits)
-
+        style1_noise = nocond_logits + scale*(style1_logits - nocond_logits)
+        style2_noise = nocond_logits + scale*(style2_logits - nocond_logits)
+        
         # noise blend
         pred_noise = alpha * style1_noise + (1-alpha) * style2_noise
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
@@ -264,13 +262,13 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
+    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log39_fannet_retrain_step_700000.pth')
     args = parser.parse_args()
 
     # important experiment parameters
     ALPHA = 0.5                  # blending rate
     APPROACH = args.approach     # must be 'Noise' or 'Condition' or 'Image'
-    CLASS_SCALE = 1.             # Common to three approaches
-    STYLE_SCALE = 1.             # Noise or Condition
+    SCALE = 3.                   # Noise or Condition
     SAMPLING_T = 500             # Image
     CLASS_SCALE_FOR_IMAGE = 0.   # Image
     STYLE1_SCALE_FOR_IMAGE = 0.  # Image
@@ -282,7 +280,7 @@ if __name__ == '__main__':
     NUM_CLASS = 26
     UNET_DIM_MULTS = (1, 2, 4, 8,)
     ENCODER_PATH = './weight/style_encoder_fannet_retrain.pth'
-    MODEL_PATH = './weight/log39_fannet_retrain_step_350000.pth'
+    MODEL_PATH = args.model_path
 
     # others
     SEED = 7777
@@ -330,12 +328,10 @@ if __name__ == '__main__':
             # interpolation
             if APPROACH == 'Noise':
                 gen = noise_blend_sampling_ddim(model, label, light_feat, bold_feat, \
-                                                class_scale=CLASS_SCALE, style_scale=STYLE_SCALE, \
-                                                alpha=ALPHA, image_size=IMAGE_SIZE)
+                                                scale=SCALE, alpha=ALPHA, image_size=IMAGE_SIZE)
             elif APPROACH == 'Condition':
                 gen = condition_blend_sampling_ddim(model, label, light_feat, bold_feat, \
-                                                    class_scale=CLASS_SCALE, style_scale=STYLE_SCALE, \
-                                                    alpha=ALPHA, image_size=IMAGE_SIZE)
+                                                scale=SCALE, alpha=ALPHA, image_size=IMAGE_SIZE)
             elif APPROACH == 'Image':
                 gen = image_blend(model, label, light_feat, bold_feat, light_img, bold_img, \
                                 class_scale=CLASS_SCALE_FOR_IMAGE, \
@@ -365,6 +361,6 @@ if __name__ == '__main__':
             f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE_FOR_IMAGE}, '\
                     f'style1 scale: {STYLE1_SCALE_FOR_IMAGE}, style2 scale: {STYLE2_SCALE_FOR_IMAGE}\n')
         else:
-            f.write(f'class scale: {CLASS_SCALE}, style scale: {STYLE_SCALE}\n')
+            f.write(f'scale: {SCALE}\n')
         for cate, loss in loss.items():
             f.write(f'{cate} MSE: {loss:.3f}\n')

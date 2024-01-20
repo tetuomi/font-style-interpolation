@@ -284,25 +284,16 @@ class Unet(nn.Module):
 
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
         self.final_conv = nn.Conv2d(dim, self.out_dim, 1)
-
-    def forward_with_cond_scale(self, *args, class_scale=1., style_scale=1., rescaled_phi=0., **kwargs):
-        if class_scale == 1. and style_scale == 1.:
-            logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
+    
+    def forward_with_cond_scale(self, *args, scale=1., **kwargs):
+        logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
+        if scale == 1.:
             return logits
 
-        class_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 0., **kwargs)
-        style_null_logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 1., **kwargs)
         null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
+        scaled_logits = null_logits + scale * (logits - null_logits)
 
-        scaled_logits = null_logits + style_scale * (class_null_logits - null_logits) + class_scale * (style_null_logits - null_logits)
-
-        if rescaled_phi == 0.:
-            return scaled_logits
-
-        std_fn = partial(torch.std, dim = tuple(range(1, scaled_logits.ndim)), keepdim = True)
-        rescaled_logits = scaled_logits * (std_fn(logits) / std_fn(scaled_logits))
-
-        return rescaled_logits * rescaled_phi + scaled_logits * (1. - rescaled_phi)
+        return scaled_logits
 
     def forward(self, x, time, classes, style, class_drop_prob=None, style_drop_prob=None):
         batch, device = x.shape[0], x.device
