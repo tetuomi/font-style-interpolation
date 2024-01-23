@@ -4,7 +4,7 @@
 # pipenv run python eval_fannet_weight_interpolation.py
 # pipenv run python eval_fannet_letter_recognition.py
 
-DM_MODEL_PATH='./weight/log39_fannet_retrain_step_700000.pth'
+DM_MODEL_PATH='./weight/log39_fannet_retrain_step_final.pth'
 
 echo 'Noise evaluation'
 pipenv run python eval_dm_weight_interpolation.py -approach 'Noise' -model_path $DM_MODEL_PATH
