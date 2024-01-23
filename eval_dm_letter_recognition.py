@@ -41,11 +41,8 @@ posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
 ### end global variables
 
 class LoadDataset(data.Dataset):
-    def __init__(self, data_list, num_class, image_size=64, margin=5):
+    def __init__(self, data_list):
         self.data_list = data_list
-        self.num_class = num_class
-        self.image_size = image_size
-        self.margin = margin
 
     def __len__(self):
         return len(self.data_list)
@@ -61,13 +58,14 @@ def read_img(path, transform, image_size=64, margin=5):
 
     return img
 
-def make_data_list(encoder, num_class, category, device, image_size=64, margin=5):
+def make_data_list(encoder, char, category, device, image_size=64, margin=5):
     df = pd.read_csv('csv_files/letter_recognition.csv')
     transform = transforms.Compose([
                     transforms.ToTensor(),
                     transforms.Lambda(lambda t: (t * 2) - 1)
                 ])
     data_dic = {c: [] for c in category}
+    num_class = 26
     for cate in data_dic.keys():
         cate_df = df[df['category'] == cate].reset_index(drop=True)
 
@@ -104,24 +102,26 @@ def make_data_list(encoder, num_class, category, device, image_size=64, margin=5
         style1_feats = torch.cat(style1_feats)
         style2_feats = torch.cat(style2_feats)
 
+        char_id = ord(char) - ord('A')
         for i in range(_data['style1'].size(0)):
             if i % num_class == 0:
                 # use average feature
                 style1_ave_feat = style1_feats[i:i+num_class].mean(dim=0)
                 style2_ave_feat = style2_feats[i:i+num_class].mean(dim=0)
-            data_dic[cate].append((_data['style1'][i], style1_ave_feat,\
-                                    _data['style2'][i], style2_ave_feat,\
-                                    _data['style1_name'][i], _data['style2_name'][i], _data['label'][i]))
+            if i % num_class == char_id:
+                data_dic[cate].append((_data['style1'][i], style1_ave_feat,\
+                                        _data['style2'][i], style2_ave_feat,\
+                                        _data['style1_name'][i], _data['style2_name'][i], _data['label'][i]))
 
     for k, v in data_dic.items():
         print(f'{k} SIZE: {len(v)}')
 
     return data_dic
 
-def make_data_loader(encoder, batch_size, image_size, num_class, category, device, margin=5):
-    data_dic = make_data_list(encoder, num_class, category, device, image_size=image_size, margin=margin)
+def make_data_loader(encoder, batch_size, image_size, char, category, device, margin=5):
+    data_dic = make_data_list(encoder, char, category, device, image_size=image_size, margin=margin)
 
-    dataset = {c: LoadDataset(data_dic[c], num_class, image_size=image_size, margin=margin) for c in category}
+    dataset = {c: LoadDataset(data_dic[c]) for c in category}
     dataloader = {c: data.DataLoader(dataset[c], batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True) for c in category}
 
     return dataloader
@@ -137,9 +137,9 @@ def q_sample(x_start, t, noise=None):
     return sqrt_alphas_cumprod_t * x_start + sqrt_one_minus_alphas_cumprod_t * noise
 
 @torch.no_grad()
-def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., style_scale=1., alpha=0.5, image_size=64):
-    b = classes.shape[0]
-    device = classes.device
+def condition_blend_sampling_ddim(model, style1, style2, style_scale=1., alpha=0.5, image_size=64):
+    b = style1.shape[0]
+    device = style1.device
     x = torch.randn(b, 1, image_size, image_size).to(device)
 
     total_timesteps, sampling_timesteps, eta = timesteps, timesteps//10, 1.
@@ -155,8 +155,7 @@ def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1.
 
     for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
         t = torch.full((b,), time, device=device, dtype=torch.long)
-        pred_noise = model.forward_with_cond_scale(x, t, classes, style,\
-                                                class_scale=class_scale, style_scale=style_scale, rescaled_phi=0.)
+        pred_noise = model.forward_with_cond_scale(x, t, style, style_scale=style_scale, rescaled_phi=0.)
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
                         extract(sqrt_recipm1_alphas_cumprod, t, x.shape) * pred_noise
 
@@ -176,9 +175,9 @@ def condition_blend_sampling_ddim(model, classes, style1, style2, class_scale=1.
     return x
 
 @torch.no_grad()
-def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., style_scale=1., alpha=0.5, image_size=64):
-    b = classes.shape[0]
-    device = classes.device
+def noise_blend_sampling_ddim(model, style1, style2, style_scale=1., alpha=0.5, image_size=64):
+    b = style1.shape[0]
+    device = style1.device
     x = torch.randn(b, 1, image_size, image_size).to(device)
 
     total_timesteps, sampling_timesteps, eta = timesteps, timesteps//10, 1.
@@ -191,13 +190,12 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., st
 
     for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
         t = torch.full((b,), time, device=device, dtype=torch.long)
-        nocond_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=1.)
-        class_logits  = model(x, t, classes, style1, class_drop_prob=0., style_drop_prob=1.)
-        style1_logits = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=0.)
-        style2_logits = model(x, t, classes, style2, class_drop_prob=1., style_drop_prob=0.)
+        nocond_logits = model(x, t, style1, style_drop_prob=1.)
+        style1_logits = model(x, t, style1, style_drop_prob=0.)
+        style2_logits = model(x, t, style2, style_drop_prob=0.)
 
-        style1_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style1_logits - nocond_logits)
-        style2_noise = nocond_logits + class_scale*(class_logits - nocond_logits) + style_scale*(style2_logits - nocond_logits)
+        style1_noise = nocond_logits + style_scale*(style1_logits - nocond_logits)
+        style2_noise = nocond_logits + style_scale*(style2_logits - nocond_logits)
 
         # noise blend
         pred_noise = alpha * style1_noise + (1-alpha) * style2_noise
@@ -220,12 +218,12 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, class_scale=1., st
     return x
 
 @torch.no_grad()
-def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., style1_scale=0., style2_scale=0., sampling_t=500):
+def image_blend(model, style1, style2, image1, image2, style1_scale=0., style2_scale=0., sampling_t=500):
     # image blend
     image3 = 2*(1 - torch.clamp(2 - (image1 + 1)*0.5 - (image2 + 1)*0.5, min=0., max=1.)) - 1
 
-    b = classes.shape[0]
-    device = classes.device
+    b = style1.shape[0]
+    device = style1.device
     t = torch.full((b,), sampling_t-1, device=device, dtype=torch.long)
     x = q_sample(image3, t)
 
@@ -235,15 +233,13 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
         sqrt_one_minus_alphas_cumprod_t = extract(sqrt_one_minus_alphas_cumprod, t, x.shape)
         sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
 
-        nocond_noise = model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=1.)
+        nocond_noise = model(x, t, style1, style_drop_prob=1.)
         pred_noise = nocond_noise.clone()
 
-        if class_scale > 0.:
-            pred_noise += class_scale  * (model(x, t, classes, style1, class_drop_prob=0., style_drop_prob=1.) - nocond_noise)
         if style1_scale > 0.:
-            pred_noise += style1_scale * (model(x, t, classes, style1, class_drop_prob=1., style_drop_prob=0.) - nocond_noise)
+            pred_noise += style1_scale * (model(x, t, style1, style_drop_prob=0.) - nocond_noise)
         if style2_scale > 0.:
-            pred_noise += style2_scale * (model(x, t, classes, style2, class_drop_prob=1., style_drop_prob=0.) - nocond_noise)
+            pred_noise += style2_scale * (model(x, t, style2, style_drop_prob=0.) - nocond_noise)
 
         model_mean = sqrt_recip_alphas_t * (x - betas_t * pred_noise / sqrt_one_minus_alphas_cumprod_t)
 
@@ -260,15 +256,16 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
+    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log39_fannet_retrain_step_700000.pth')
+    parser.add_argument('-char', '--char', help='char e.x. (-char A)', type=str, default='A')
     args = parser.parse_args()
 
     # important experiment parameters
     ALPHA = 0.5                  # blending rate
+    CHAR = args.char             # must be 'A' or 'B' or ... or 'Z'
     APPROACH = args.approach     # must be 'Noise' or 'Condition' or 'Image'
-    CLASS_SCALE = 1.             # Common to three approaches
-    STYLE_SCALE = 1.             # Noise or Condition
+    SCALE = 3.                   # Noise or Condition
     SAMPLING_T = 500             # Image
-    CLASS_SCALE_FOR_IMAGE = 0.   # Image
     STYLE1_SCALE_FOR_IMAGE = 0.  # Image
     STYLE2_SCALE_FOR_IMAGE = 0.  # Image
 
@@ -278,7 +275,7 @@ if __name__ == '__main__':
     NUM_CLASS = 26
     UNET_DIM_MULTS = (1, 2, 4, 8,)
     ENCODER_PATH = './weight/style_encoder_fannet_retrain.pth'
-    MODEL_PATH = './weight/log39_fannet_retrain_step_350000.pth'
+    MODEL_PATH = args.model_path
 
     # others
     SEED = 7777
@@ -286,9 +283,9 @@ if __name__ == '__main__':
     BATCH_SIZE = 128
     CLASSIFIER_PATH = './weight/char_classifier2.pth'
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
-    SAVE_IMG_DIR = f'result/letter_recognition/{APPROACH}'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING']
+    SAVE_IMG_DIR = f"result/letter_recognition/{os.path.basename(MODEL_PATH).split('.')[0]}/{APPROACH}"
 
     freeze_seed(SEED)
     print(f'Using device: {DEVICE}')
@@ -312,14 +309,13 @@ if __name__ == '__main__':
         dim=UNET_DIM,
         channels=CHANNELS,
         dim_mults=UNET_DIM_MULTS,
-        num_class=NUM_CLASS,
     )
     model.to(DEVICE)
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
     model.eval()
 
 
-    dataloader = make_data_loader(encoder, BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY, DEVICE)
+    dataloader = make_data_loader(encoder, BATCH_SIZE, IMAGE_SIZE, CHAR, CATEGORY, DEVICE)
 
     acc = {c: 0. for c in CATEGORY}
     for cate in CATEGORY:
@@ -335,16 +331,15 @@ if __name__ == '__main__':
 
             # interpolation
             if APPROACH == 'Noise':
-                gen = noise_blend_sampling_ddim(model, label, style1_feat, style2_feat, \
-                                                class_scale=CLASS_SCALE, style_scale=STYLE_SCALE, \
+                gen = noise_blend_sampling_ddim(model, style1_feat, style2_feat, \
+                                                style_scale=SCALE, \
                                                 alpha=ALPHA, image_size=IMAGE_SIZE)
             elif APPROACH == 'Condition':
-                gen = condition_blend_sampling_ddim(model, label, style1_feat, style2_feat, \
-                                                    class_scale=CLASS_SCALE, style_scale=STYLE_SCALE, \
-                                                    alpha=ALPHA, image_size=IMAGE_SIZE)
+                gen = condition_blend_sampling_ddim(model, style1_feat, style2_feat, \
+                                                style_scale=SCALE, \
+                                                alpha=ALPHA, image_size=IMAGE_SIZE)
             elif APPROACH == 'Image':
-                gen = image_blend(model, label, style1_feat, style2_feat, style1_img, style2_img, \
-                                class_scale=CLASS_SCALE_FOR_IMAGE, \
+                gen = image_blend(model, style1_feat, style2_feat, style1_img, style2_img, \
                                 style1_scale=STYLE1_SCALE_FOR_IMAGE, style2_scale=STYLE2_SCALE_FOR_IMAGE, \
                                 sampling_t=SAMPLING_T)
             else:
@@ -371,10 +366,11 @@ if __name__ == '__main__':
         f.write(f'{APPROACH} letter_recognition\n')
         f.write(f'CLASSIFIER: {CLASSIFIER_PATH}\n')
         f.write(f'MODEL: {MODEL_PATH}\n')
+        f.write(f'CHAR: {CHAR}\n')
         if APPROACH == 'Image':
-            f.write(f'sampling t: {SAMPLING_T}, class scale: {CLASS_SCALE_FOR_IMAGE}, '\
+            f.write(f'sampling t: {SAMPLING_T}'\
                     f'style1 scale: {STYLE1_SCALE_FOR_IMAGE}, style2 scale: {STYLE2_SCALE_FOR_IMAGE}\n')
         else:
-            f.write(f'class scale: {CLASS_SCALE}, style scale: {STYLE_SCALE}\n')
+            f.write(f'scale: {SCALE}\n')
         for cate, acc in acc.items():
             f.write(f'{cate} ACC: {acc:.3f}\n')
