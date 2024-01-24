@@ -8,7 +8,7 @@ from fannet import FANnet
 
 
 class LoadDataset(data.Dataset):
-    def __init__(self, data_list, num_class, image_size=64, margin=5):
+    def __init__(self, data_list, num_class, image_size=64, margin=40):
         self.data_list = data_list
         self.num_class = num_class
         self.image_size = image_size
@@ -58,7 +58,7 @@ def make_data_list(num_class, category):
 
     return data_list
 
-def make_data_loader(batch_size, image_size, num_class, category, margin=5):
+def make_data_loader(batch_size, image_size, num_class, category, margin=40):
     data_list = make_data_list(num_class, category)
 
     dataset = {c: LoadDataset(data_list[c], num_class, image_size=image_size, margin=margin) for c in category}

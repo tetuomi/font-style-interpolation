@@ -40,7 +40,7 @@ posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
 ### end global variables
 
 class LoadDataset(data.Dataset):
-    def __init__(self, data_list, num_class, image_size=64, margin=5):
+    def __init__(self, data_list, num_class, image_size=64, margin=40):
         self.data_list = data_list
         self.num_class = num_class
         self.image_size = image_size
@@ -53,14 +53,14 @@ class LoadDataset(data.Dataset):
         # light_img, light_feat, bold_img, bold_feat, gt_img, gt_fontname, label
         return self.data_list[index]
 
-def read_img(path, transform, image_size=64, margin=5):
+def read_img(path, transform, image_size=64, margin=40):
     img = cv2.imread(path, 0)
     img = preprocessing(img, img_size=image_size, margin=margin)
     img = transform(img).float().unsqueeze(0)
 
     return img
 
-def make_data_list(encoder, num_class, category, device, image_size=64, margin=5):
+def make_data_list(encoder, num_class, category, device, image_size=64, margin=40):
     df = pd.read_csv('csv_files/weight_interpolation.csv')
     transform = transforms.Compose([
                     transforms.ToTensor(),
@@ -122,7 +122,7 @@ def make_data_list(encoder, num_class, category, device, image_size=64, margin=5
 
     return data_dic
 
-def make_data_loader(encoder, batch_size, image_size, num_class, category, device, margin=5):
+def make_data_loader(encoder, batch_size, image_size, num_class, category, device, margin=40):
     data_dic = make_data_list(encoder, num_class, category, device, image_size=image_size, margin=margin)
 
     dataset = {c: LoadDataset(data_dic[c], num_class, image_size=image_size, margin=margin) for c in category}
@@ -200,7 +200,7 @@ def noise_blend_sampling_ddim(model, classes, style1, style2, scale=1., alpha=0.
 
         style1_noise = nocond_logits + scale*(style1_logits - nocond_logits)
         style2_noise = nocond_logits + scale*(style2_logits - nocond_logits)
-        
+
         # noise blend
         pred_noise = alpha * style1_noise + (1-alpha) * style2_noise
         x_start  = extract(sqrt_recip_alphas_cumprod, t, x.shape) * x -\
@@ -262,7 +262,7 @@ def image_blend(model, classes, style1, style2, image1, image2, class_scale=1., 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
-    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log39_fannet_retrain_step_700000.pth')
+    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log39_fannet_retrain_step_final.pth')
     args = parser.parse_args()
 
     # important experiment parameters
@@ -288,8 +288,8 @@ if __name__ == '__main__':
     BATCH_SIZE = 128
     SAVE_TXT_PATH = 'result/weight_interpolation/mse.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    SAVE_IMG_DIR = f'result/weight_interpolation/{APPROACH}'
     CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING']
+    SAVE_IMG_DIR = f"result/weight_interpolation/{os.path.basename(MODEL_PATH).split('.')[0]}/{APPROACH}"
 
     freeze_seed(SEED)
     print(f'Using device: {DEVICE}')
