@@ -50,14 +50,14 @@ class LoadDataset(data.Dataset):
         # light_img, light_feat, bold_img, bold_feat, gt_img, gt_fontname, label
         return self.data_list[index]
 
-def read_img(path, transform, image_size=64, margin=5):
+def read_img(path, transform, image_size=64, margin=40):
     img = cv2.imread(path, 0)
     img = preprocessing(img, img_size=image_size, margin=margin)
     img = transform(img).float().unsqueeze(0)
 
     return img
 
-def make_data_list(encoder, char, category, device, image_size=64, margin=5):
+def make_data_list(encoder, char, category, device, image_size=64, margin=40):
     df = pd.read_csv('csv_files/weight_interpolation.csv')
     transform = transforms.Compose([
                     transforms.ToTensor(),
@@ -122,7 +122,7 @@ def make_data_list(encoder, char, category, device, image_size=64, margin=5):
 
     return data_dic
 
-def make_data_loader(encoder, batch_size, image_size, char, category, device, margin=5):
+def make_data_loader(encoder, batch_size, image_size, char, category, device, margin=40):
     data_dic = make_data_list(encoder, char, category, device, image_size=image_size, margin=margin)
 
     dataset = {c: LoadDataset(data_dic[c]) for c in category}
@@ -259,7 +259,7 @@ def image_blend(model, style1, style2, image1, image2, style1_scale=0., style2_s
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-approach', '--approach', help='approach e.x. (-approach Noise)', type=str, default='Noise')
-    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log39_fannet_retrain_step_700000.pth')
+    parser.add_argument('-model_path', '--model_path', help='model_path e.x. (-model_path XX)', type=str, default='./weight/log41_fannet_retrain_step_final.pth')
     parser.add_argument('-char', '--char', help='char e.x. (-char A)', type=str, default='A')
     args = parser.parse_args()
 
@@ -267,7 +267,7 @@ if __name__ == '__main__':
     ALPHA = 0.5                  # blending rate
     CHAR = args.char             # must be 'A' or 'B' or ... or 'Z'
     APPROACH = args.approach     # must be 'Noise' or 'Condition' or 'Image'
-    SCALE = 3.                   # Noise or Condition
+    SCALE = 1.                   # Noise or Condition
     SAMPLING_T = 500             # Image
     STYLE1_SCALE_FOR_IMAGE = 0.  # Image
     STYLE2_SCALE_FOR_IMAGE = 0.  # Image
@@ -357,7 +357,7 @@ if __name__ == '__main__':
         f.write(f'MODEL: {MODEL_PATH}\n')
         f.write(f'CHAR: {CHAR}\n')
         if APPROACH == 'Image':
-            f.write(f'sampling t: {SAMPLING_T}'\
+            f.write(f'sampling t: {SAMPLING_T} '\
                     f'style1 scale: {STYLE1_SCALE_FOR_IMAGE}, style2 scale: {STYLE2_SCALE_FOR_IMAGE}\n')
         else:
             f.write(f'scale: {SCALE}\n')
