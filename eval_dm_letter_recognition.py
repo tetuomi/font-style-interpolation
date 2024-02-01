@@ -285,7 +285,7 @@ if __name__ == '__main__':
     CLASSIFIER_PATH = './weight/char_classifier2.pth'
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING']
+    # CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING', 'RANDOM']
     SAVE_IMG_DIR = f"result/letter_recognition/{os.path.basename(MODEL_PATH).split('.')[0]}/{APPROACH}"
 
     freeze_seed(SEED)

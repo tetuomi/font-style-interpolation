@@ -76,7 +76,7 @@ if __name__ == '__main__':
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     MODEL_PATH = './weight/style_encoder_fannet_retrain.pth'
-    CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING']
+    CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING', 'RANDOM']
 
     freeze_seed(SEED)
     print(f'Using device: {DEVICE}')
