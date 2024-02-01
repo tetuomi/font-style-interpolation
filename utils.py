@@ -70,7 +70,7 @@ def preprocessing_myfonts(img,img_size=64,margin=0):
     img = cv2.resize(img, (img_size, img_size))
     return img / 255.
 
-def postprocessing(img, img_size=64, margin=0):
+def postprocessing(img, img_size=64, margin=0, binarization=True):
     img_white = np.where(img > 127, 0, 255).astype(np.uint8)
     y_min = 0
     y_max = 0
@@ -107,15 +107,15 @@ def postprocessing(img, img_size=64, margin=0):
         img_resize = np.pad(img_resize, [(pad, pad), (0, 0)], 'constant', constant_values=(255, 255))
     elif h > w:
         pad = int((img_size - 2*margin - w*ratio) / 2)
-        img_resize = np.pad(img_resize, [(pad, pad), (0, 0)], 'constant', constant_values=(255, 255))
+        img_resize = np.pad(img_resize, [(0, 0),(pad, pad)], 'constant', constant_values=(255, 255))
 
     if margin > 0:
         img_resize = np.pad(img_resize, [(margin, margin), (margin, margin)], 'constant', constant_values=(255, 255))
     img_resize = cv2.resize(img_resize, (img_size, img_size), interpolation=cv2.INTER_CUBIC)
-    img_resize = np.where(img_resize > 127, 255, 0)
+    if binarization == True:
+        img_resize = np.where(img_resize > 127, 255, 0)
 
     return img_resize / 255.
-
 
 def save_generated_image(imgs, save_dir, save_filename):
     assert 0 <= imgs.min().item(), 'generated image must be normalized to [0, 1]'
