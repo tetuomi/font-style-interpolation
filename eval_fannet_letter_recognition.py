@@ -64,25 +64,65 @@ def make_data_loader(batch_size, image_size, num_class, category, margin=40):
 
     return dataloader
 
+class LoadDatasetMyFonts(data.Dataset):
+    def __init__(self, data_list):
+        self.data_list = data_list
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, index):
+        # style1, style2, style1_name, style2_name, label
+        return self.data_list[index]
+
+def make_data_list_myfonts(num_class, image_size=64, margin=5):
+    df = pd.read_csv('csv_files/letter_recognition_myfonts.csv')
+
+    data_list = []
+    for _, row in df.iterrows():
+        style1_imgs = np.load(f"../font2img/myfonts/test/{row['style1']}")['arr_0']
+        style2_imgs = np.load(f"../font2img/myfonts/test/{row['style2']}")['arr_0']
+        for label in range(num_class):
+            style1_img = style1_imgs[label]
+            style2_img = style2_imgs[label]
+            style1_img = torch.tensor(preprocessing_myfonts(style1_img, image_size, margin)).unsqueeze(0)
+            style2_img = torch.tensor(preprocessing_myfonts(style2_img, image_size, margin)).unsqueeze(0)
+            
+            data_list.append((style1_img, style2_img, label, row['style1'].split('.')[0], row['style2'].split('.')[0]))
+            
+    print(f'SIZE: {len(data_list)}')
+
+    return data_list
+
+def make_data_loader_myfonts(batch_size, image_size, num_class, margin=5):
+    data_list = make_data_list_myfonts(num_class, image_size=image_size, margin=margin)
+
+    dataset = LoadDatasetMyFonts(data_list)
+    dataloader = data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+
+    return {'MYFONTS_RANDOM': dataloader}
+
 
 if __name__ == '__main__':
     ALPHA = 0.5
     SEED = 7777
     NUM_CLASS = 26
     IMAGE_SIZE = 64
-    BATCH_SIZE = 16
+    BATCH_SIZE = 256
     CLASSIFIER_PATH = './weight/char_classifier2.pth'
     SAVE_IMG_DIR = 'result/letter_recognition/FANnet'
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     MODEL_PATH = './weight/style_encoder_fannet_retrain.pth'
-    CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING', 'RANDOM']
+    # CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING', 'RANDOM']
+    CATEGORY = ['MYFONTS_RANDOM'] # for myfonts
 
     freeze_seed(SEED)
     print(f'Using device: {DEVICE}')
     print('FANnet')
 
-    dataloader = make_data_loader(BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY)
+    # dataloader = make_data_loader(BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY)
+    dataloader = make_data_loader_myfonts(BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, margin=5) # for myfonts
 
     model = FANnet(NUM_CLASS)
     model.to(DEVICE)

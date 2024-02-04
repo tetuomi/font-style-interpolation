@@ -126,6 +126,80 @@ def make_data_loader(encoder, batch_size, image_size, num_class, category, devic
 
     return dataloader
 
+class LoadDatasetMyFonts(data.Dataset):
+    def __init__(self, data_list):
+        self.data_list = data_list
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, index):
+        # style1_img, style1_feat, style2_img, style2_feat, style1_name, style2_name, label
+        return self.data_list[index]
+
+def make_data_list_myfonts(encoder, num_class, device, image_size=64, margin=5):
+    df = pd.read_csv('csv_files/letter_recognition_myfonts.csv')
+    transform = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Lambda(lambda t: (t * 2) - 1)
+                ])
+    
+    # gather data within the same category
+    _data = {'style1': [], 'style2': [], 'style1_name': [], 'style2_name': [], 'label': [],}
+    for _, row in df.iterrows():
+        style1_imgs = np.load(f"../font2img/myfonts/test/{row['style1']}")['arr_0']
+        style2_imgs = np.load(f"../font2img/myfonts/test/{row['style2']}")['arr_0']
+        for label in range(num_class):
+            style1_img = style1_imgs[label]
+            style2_img = style2_imgs[label]
+            style1_img = transform(preprocessing_myfonts(style1_img, image_size, margin)).float().unsqueeze(0)
+            style2_img = transform(preprocessing_myfonts(style2_img, image_size, margin)).float().unsqueeze(0)
+            
+            _data['style1'].append(style1_img)
+            _data['style2'].append(style2_img)
+            _data['style1_name'].append(row['style1'].split('.')[0])
+            _data['style2_name'].append(row['style2'].split('.')[0])
+            _data['label'].append(label)
+
+    # encode
+    _data['style1'] = torch.cat(_data['style1'])
+    _data['style2'] = torch.cat(_data['style2'])
+    b = 512
+    style1_feats = []
+    style2_feats = []
+    with torch.no_grad():
+        for i in range(0, _data['style1'].size(0), b):
+            # range of encoder input is 0-1
+            style1_feat = encoder.style_encode((_data['style1'][i:i+b].to(device)+1)*0.5)
+            style2_feat = encoder.style_encode((_data['style2'][i:i+b].to(device)+1)*0.5)
+            style1_feats.append(style1_feat.cpu().detach().clone())
+            style2_feats.append(style2_feat.cpu().detach().clone())
+
+    style1_feats = torch.cat(style1_feats)
+    style2_feats = torch.cat(style2_feats)
+
+    data_list = []
+    for i in range(_data['style1'].size(0)):
+        if i % num_class == 0:
+            # use average feature
+            style1_ave_feat = style1_feats[i:i+num_class].mean(dim=0)
+            style2_ave_feat = style2_feats[i:i+num_class].mean(dim=0)
+        data_list.append((_data['style1'][i], style1_ave_feat,\
+                        _data['style2'][i], style2_ave_feat,\
+                        _data['style1_name'][i], _data['style2_name'][i], _data['label'][i]))
+
+    print(f'SIZE: {len(data_list)}')
+
+    return data_list
+
+def make_data_loader_myfonts(encoder, batch_size, image_size, num_class, device, margin=5):
+    data_list = make_data_list_myfonts(encoder, num_class, device, image_size=image_size, margin=margin)
+
+    dataset = LoadDatasetMyFonts(data_list)
+    dataloader = data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=16, pin_memory=True)
+    
+    return {'MYFONTS_RANDOM': dataloader}
+
 @torch.no_grad()
 def q_sample(x_start, t, noise=None):
     if noise is None:
@@ -286,6 +360,7 @@ if __name__ == '__main__':
     SAVE_TXT_PATH = 'result/letter_recognition/acc.txt'
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     # CATEGORY = ['SERIF', 'SANS_SERIF', 'DISPLAY', 'HANDWRITING', 'RANDOM']
+    CATEGORY = ['MYFONTS_RANDOM'] # for myfonts
     SAVE_IMG_DIR = f"result/letter_recognition/{os.path.basename(MODEL_PATH).split('.')[0]}/{APPROACH}"
 
     freeze_seed(SEED)
@@ -317,7 +392,8 @@ if __name__ == '__main__':
     model.eval()
 
 
-    dataloader = make_data_loader(encoder, BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY, DEVICE)
+    # dataloader = make_data_loader(encoder, BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, CATEGORY, DEVICE)
+    dataloader = make_data_loader_myfonts(encoder, BATCH_SIZE, IMAGE_SIZE, NUM_CLASS, DEVICE, margin=5) # for myfonts
 
     acc = {c: 0. for c in CATEGORY}
     for cate in CATEGORY:
