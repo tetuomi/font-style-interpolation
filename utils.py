@@ -1,3 +1,5 @@
+import os
+import math
 import random
 from inspect import isfunction
 
@@ -5,6 +7,7 @@ import cv2
 import numpy as np
 
 import torch
+from torchvision import transforms
 
 
 def freeze_seed(seed):
@@ -62,6 +65,68 @@ def preprocessing(img,img_size=64,margin=0,threshold_w=0,threshold_h=0):
 
     return img_resize / 255.0
 
+def preprocessing_myfonts(img,img_size=64,margin=0):
+    img = np.pad(img,[(margin,margin),(margin,margin)], 'constant', constant_values=255.)
+    img = cv2.resize(img, (img_size, img_size))
+    return img / 255.
+
+def postprocessing(img, img_size=64, margin=0, binarization=True):
+    img_white = np.where(img > 127, 0, 255).astype(np.uint8)
+    y_min = 0
+    y_max = 0
+    x_min = 0
+    x_max = 0
+    for i in range(img_white.shape[0]):
+        if np.sum(img_white[i, :]) > 0:
+            y_min = i
+            break
+    for i in reversed(range(img_white.shape[0])):
+        if np.sum(img_white[i, :]) > 0:
+            y_max = i+1
+            break
+    for i in range(img_white.shape[1]):
+        if np.sum(img_white[:, i]) > 0:
+            x_min = i
+            break
+    for i in reversed(range(img_white.shape[1])):
+        if np.sum(img_white[:, i]) > 0:
+            x_max = i+1
+            break
+
+    img = img[y_min:y_max, x_min:x_max]
+    h = img.shape[0]
+    w = img.shape[1]
+
+    size = max(w, h)
+    ratio = (img_size - 2*margin) / size
+
+    img_resize = cv2.resize(img, (int(w*ratio), int(h*ratio)), interpolation=cv2.INTER_CUBIC)
+
+    if w > h:
+        pad = int((img_size - 2*margin - h*ratio) / 2)
+        img_resize = np.pad(img_resize, [(pad, pad), (0, 0)], 'constant', constant_values=(255, 255))
+    elif h > w:
+        pad = int((img_size - 2*margin - w*ratio) / 2)
+        img_resize = np.pad(img_resize, [(0, 0),(pad, pad)], 'constant', constant_values=(255, 255))
+
+    if margin > 0:
+        img_resize = np.pad(img_resize, [(margin, margin), (margin, margin)], 'constant', constant_values=(255, 255))
+    img_resize = cv2.resize(img_resize, (img_size, img_size), interpolation=cv2.INTER_CUBIC)
+    if binarization == True:
+        img_resize = np.where(img_resize > 127, 255, 0)
+
+    return img_resize / 255.
+
+def save_generated_image(imgs, save_dir, save_filename):
+    assert 0 <= imgs.min().item(), 'generated image must be normalized to [0, 1]'
+    assert imgs.size(0) == len(save_filename), 'imgs batch size and save_filename must be same'
+    to_pil = transforms.Compose([
+                transforms.ToPILImage(),
+            ])
+    for img, f in zip(imgs, save_filename):
+        img = to_pil(img)
+        img.save(os.path.join(save_dir, f + '.png'))
+
 def exists(x):
     return x is not None
 
@@ -92,7 +157,7 @@ def cosine_beta_schedule(timesteps, s=0.008):
     """
     steps = timesteps + 1
     x = torch.linspace(0, timesteps, steps)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0.0001, 0.9999)

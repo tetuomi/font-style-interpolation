@@ -187,9 +187,8 @@ class Unet(nn.Module):
     def __init__(
         self,
         dim,
-        num_classes,
-        num_style,
-        cond_drop_prob=0.5,
+        num_class,
+        cond_drop_prob=0.1,
         init_dim=None,
         out_dim=None,
         dim_mults=(1, 2, 4, 8),
@@ -225,10 +224,9 @@ class Unet(nn.Module):
         )
 
         # class embeddings
-        self.classes_emb = nn.Embedding(num_classes, dim)
-        self.null_classes_emb = nn.Parameter(torch.randn(dim))
-
         classes_dim = dim * 4
+        self.classes_emb = nn.Embedding(num_class, dim)
+        self.null_classes_emb = nn.Parameter(torch.randn(dim))
 
         self.classes_mlp = nn.Sequential(
             nn.Linear(dim, classes_dim),
@@ -237,16 +235,8 @@ class Unet(nn.Module):
         )
 
         # style embeddings
-        self.style_emb = nn.Embedding(num_style, dim)
-        self.null_style_emb = nn.Parameter(torch.randn(dim))
-
         style_dim = dim * 4
-
-        self.style_mlp = nn.Sequential(
-            nn.Linear(dim, style_dim),
-            nn.GELU(),
-            nn.Linear(style_dim, style_dim)
-        )
+        self.null_style_emb = nn.Parameter(torch.randn(style_dim))
 
         # layers
         self.downs = nn.ModuleList([])
@@ -295,36 +285,15 @@ class Unet(nn.Module):
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
         self.final_conv = nn.Conv2d(dim, self.out_dim, 1)
 
-    def forward_with_cond_scale(self, *args, class_scale=1., style_scale=1., rescaled_phi=0., **kwargs):
+    def forward_with_cond_scale(self, *args, scale=1., **kwargs):
         logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
-
-        if class_scale == 1. and style_scale == 1.:
+        if scale == 1.:
             return logits
 
-        class_null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 0., **kwargs)
-        style_null_logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 1., **kwargs)
+        null_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
+        scaled_logits = null_logits + scale * (logits - null_logits)
 
-        # disentangle cfg
-        if args[1][0].item() >= 900:
-            scaled_logits = logits + style_scale * class_null_logits + class_scale * style_null_logits
-        else:
-            # scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
-            scaled_logits = logits + 3. * (logits - style_null_logits) + 3. * (logits - class_null_logits)
-
-        # simple cfg
-        ## ε(Φ, Φ)なし
-        # scaled_logits = logits + style_scale * (logits - style_null_logits) + class_scale * (logits - class_null_logits)
-        ## ε(Φ, Φ)あり
-        # base_logits = self.forward(*args, class_drop_prob = 1., style_drop_prob = 1., **kwargs)
-        # scaled_logits = logits + style_scale * (class_null_logits - base_logits) + class_scale * (style_null_logits - base_logits)
-
-        if rescaled_phi == 0.:
-            return scaled_logits
-
-        std_fn = partial(torch.std, dim = tuple(range(1, scaled_logits.ndim)), keepdim = True)
-        rescaled_logits = scaled_logits * (std_fn(logits) / std_fn(scaled_logits))
-
-        return rescaled_logits * rescaled_phi + scaled_logits * (1. - rescaled_phi)
+        return scaled_logits
 
     def forward(self, x, time, classes, style, class_drop_prob=None, style_drop_prob=None):
         batch, device = x.shape[0], x.device
@@ -337,12 +306,6 @@ class Unet(nn.Module):
         if style_drop_prob > 0:
             style_keep_mask = prob_mask_like((batch,), 1 - style_drop_prob, device = device)
 
-        # class と style 両方noneを取り除く
-        # if class_drop_prob > 0 and style_drop_prob > 0:
-        #     style_or_class_is_true = torch.logical_or(class_keep_mask, style_keep_mask)
-        #     class_keep_mask = torch.where(style_or_class_is_true, class_keep_mask, torch.ones_like(class_keep_mask))
-        #     style_keep_mask = torch.where(style_or_class_is_true, style_keep_mask, torch.ones_like(style_keep_mask))
-
         # class embeddings
         classes_emb = self.classes_emb(classes)
         if class_drop_prob > 0:
@@ -354,17 +317,16 @@ class Unet(nn.Module):
             )
 
         # style embeddings
-        style_emb = self.style_emb(style)
         if style_drop_prob > 0:
             null_style_emb = repeat(self.null_style_emb, 'd -> b d', b = batch)
-            style_emb = torch.where(
+            style = torch.where(
                 rearrange(style_keep_mask, 'b -> b 1'),
-                style_emb,
+                style,
                 null_style_emb
             )
 
         c = self.classes_mlp(classes_emb)
-        s = self.style_mlp(style_emb)
+        s = style
 
         x = self.init_conv(x)
         r = x.clone()
@@ -403,6 +365,7 @@ class Unet(nn.Module):
         return self.final_conv(x)
 
     def forward_with_emb_interpolate(self, x, time, classes, style1, style2, alpha=0.5, class_drop_prob=None, style_drop_prob=None):
+        # HACK: forward(...)を使う
         batch, device = x.shape[0], x.device
 
         class_drop_prob = default(class_drop_prob, self.cond_drop_prob)
