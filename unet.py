@@ -284,7 +284,7 @@ class Unet(nn.Module):
 
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim=time_dim, classes_emb_dim=classes_dim, style_emb_dim=style_dim)
         self.final_conv = nn.Conv2d(dim, self.out_dim, 1)
-    
+
     def forward_with_cond_scale(self, *args, scale=1., **kwargs):
         logits = self.forward(*args, class_drop_prob = 0., style_drop_prob = 0., **kwargs)
         if scale == 1.:
