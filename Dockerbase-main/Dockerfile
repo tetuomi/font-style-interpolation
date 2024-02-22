@@ -55,7 +55,7 @@ RUN pip install --upgrade pip
 
 # or
 RUN pip install hydra-core --upgrade
-RUN pip install pandas matplotlib opencv-python scikit-learn torchsummary jupyterlab tensorboard tqdm einops seaborn mlflow flake8 autopep8
+RUN pip install pandas matplotlib opencv-python scikit-learn torchsummary jupyterlab tensorboard tqdm einops seaborn mlflow flake8 autopep8 notebook
 # ws06
 # RUN pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
 # DA
